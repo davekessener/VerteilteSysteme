@@ -1,0 +1,5 @@
+package vs;
+
+public class Start extends Application
+{
+}
