@@ -95,7 +95,7 @@ public class InetAddressValidator implements Serializable {
         	
         	for(int i = 0 ; i < groups.length ; ++i)
         	{
-        		groups[i] = m.group(i);
+        		groups[i] = m.group(i + 1);
         	}
         }
 

@@ -12,22 +12,25 @@ import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Stream;
 
 import dave.util.Actor;
 import dave.util.log.Logger;
 import dave.util.log.Severity;
-
+import javafx.beans.property.Property;
+import javafx.beans.property.SimpleLongProperty;
+import vs.app.common.InternalRemoteException;
 import vs.util.FrequencyQueue;
 import vs.util.InetAddressValidator;
 
-public class ChatEngine implements ConfigurableMessageService, Actor
+public class ChatEngine implements MessageService, MessageServiceConfiguration, Actor
 {
 	private final ScheduledExecutorService mAsync;
 	private final BlockingQueue<Entry> mMessages;
 	private final Map<String, Client> mClients;
 	private int mTimeoutPeriod, mTimeoutCount, mTimeoutDuration;
 	private int mCapacity, mForgetTime;
-	private long mNextID;
+	private final Property<Number> mNextID;
 	
 	public ChatEngine( )
 	{
@@ -40,7 +43,11 @@ public class ChatEngine implements ConfigurableMessageService, Actor
 		mAsync = Executors.newSingleThreadScheduledExecutor();
 		mMessages = new LinkedBlockingQueue<>();
 		mClients = new HashMap<>();
+		mNextID = new SimpleLongProperty(0);
 	}
+	
+	public Property<Number> indexProperty( ) { return mNextID; }
+	public Stream<String> entries( ) { return mMessages.stream().map(Entry::toString); }
 
 	@Override
 	public void setTimeout(int p, int n, int d) throws RemoteException
@@ -49,7 +56,7 @@ public class ChatEngine implements ConfigurableMessageService, Actor
 		{
 			LOG.log(Severity.ERROR, "Tried to configure timeout with invalid parameters! (%d %d %d)", p, n, d);
 			
-			throw new RemoteException("Invalid timeout config! (" + p + ", " + n + ", " + d + ")", new IllegalArgumentException());
+			throw new RemoteException("Invalid timeout config! (" + p + ", " + n + ", " + d + ")");
 		}
 		
 		mTimeoutPeriod = p;
@@ -64,7 +71,7 @@ public class ChatEngine implements ConfigurableMessageService, Actor
 		{
 			LOG.log(Severity.ERROR, "Tried to configure capacity with invalid value! (%d)", n);
 			
-			throw new RemoteException("Invalid capacity config! (" + n + ")", new IllegalArgumentException());
+			throw new RemoteException("Invalid capacity config! (" + n + ")");
 		}
 		
 		mCapacity = n;
@@ -77,7 +84,7 @@ public class ChatEngine implements ConfigurableMessageService, Actor
 		{
 			LOG.log(Severity.ERROR, "Tried to configure forget time with invalid value! (%d)", t);
 			
-			throw new RemoteException("Invalid forget config! (" + t + ")", new IllegalArgumentException());
+			throw new RemoteException("Invalid forget config! (" + t + ")");
 		}
 		
 		mForgetTime = t;
@@ -98,6 +105,13 @@ public class ChatEngine implements ConfigurableMessageService, Actor
 	public String nextMessage(String cid) throws RemoteException
 	{
 		String next = null;
+
+		if(cid == null)
+		{
+			LOG.log(Severity.WARNING, "Received 'null' client id!");
+			
+			throw new InternalRemoteException("Client ID missing!");
+		}
 		
 		synchronized(mClients)
 		{
@@ -111,6 +125,8 @@ public class ChatEngine implements ConfigurableMessageService, Actor
 					{
 						next = e.message;
 						c.last = e.id;
+						
+						break;
 					}
 				}
 				
@@ -128,21 +144,21 @@ public class ChatEngine implements ConfigurableMessageService, Actor
 		{
 			LOG.log(Severity.WARNING, "Received 'null' client id!");
 			
-			throw new RemoteException("Client ID missing!", new NullPointerException());
+			throw new InternalRemoteException("Client ID missing!");
 		}
 		
 		if(msg == null)
 		{
 			LOG.log(Severity.WARNING, "Received 'null' message from %s!", cid);
 			
-			throw new RemoteException("Message missing!", new NullPointerException());
+			throw new InternalRemoteException("Message missing!");
 		}
 		
 		if(!InetAddressValidator.getInstance().isValid(cid))
 		{
 			LOG.log(Severity.WARNING, "Client ID '%s' is not a valid IP addresss!", cid);
 			
-			throw new RemoteException(cid + " is not a valid IP address!", new IllegalArgumentException());
+			throw new InternalRemoteException(cid + " is not a valid IP address!");
 		}
 		
 		synchronized(mClients)
@@ -158,7 +174,7 @@ public class ChatEngine implements ConfigurableMessageService, Actor
 						cid, mTimeoutDuration, mTimeoutCount, 
 						(mTimeoutPeriod % 1000 == 0 ? ("" + mTimeoutPeriod) : String.format("%.2f", mTimeoutPeriod / 1000.0)));
 				
-				throw new RemoteException("" + mTimeoutPeriod + "ms timeout for spam!", new IllegalStateException());
+				throw new InternalRemoteException("" + mTimeoutDuration + "ms timeout for spam!");
 			}
 			
 			mClients.values().stream().forEach(cc -> cc.empty = false);
@@ -174,6 +190,10 @@ public class ChatEngine implements ConfigurableMessageService, Actor
 			}
 			
 			mMessages.add(e);
+			
+			mNextID.setValue(mNextID.getValue().longValue() + 1);
+			
+			LOG.log("Client %s sent new message '%s'", cid, msg);
 		}
 	}
 	
@@ -209,9 +229,9 @@ public class ChatEngine implements ConfigurableMessageService, Actor
 		
 		public Entry(String cid, String msg)
 		{
-			id = mNextID++;
+			id = mNextID.getValue().longValue();
 			client = cid;
-			message = String.format("%04d %-15s: %80s %s", id, client, msg, FORMAT.format(new Date()));
+			message = String.format("%04d %15s: %-80s %s", id, client, msg, FORMAT.format(new Date()));
 		}
 		
 		@Override
@@ -239,11 +259,11 @@ public class ChatEngine implements ConfigurableMessageService, Actor
 		}
 	}
 	
-	private static final int DEF_TIMEOUT_PERIOD = 1 * 1000;
-	private static final int DEF_TIMEOUT_COUNT = 10;
-	private static final int DEF_TIMEOUT_DURATION = 10 * 1000;
-	private static final int DEF_CAPACITY = 15;
-	private static final int DEF_FORGET = 5 * 1000;
+	public static final int DEF_TIMEOUT_PERIOD = 1 * 1000;
+	public static final int DEF_TIMEOUT_COUNT = 10;
+	public static final int DEF_TIMEOUT_DURATION = 10 * 1000;
+	public static final int DEF_CAPACITY = 15;
+	public static final int DEF_FORGET = 5 * 1000;
 	
 	private static final DateFormat FORMAT = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS");
 	private static final Logger LOG = Logger.get("chat");

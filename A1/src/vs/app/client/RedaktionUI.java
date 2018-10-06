@@ -30,6 +30,8 @@ public class RedaktionUI
 	
 	public Node getUI( ) { return mRoot; }
 	
+	public void resetInput( ) { mText.setText(""); }
+	
 	public void setOnSend(Consumer<String> cb)
 	{
 		mSend.setOnAction(e -> cb.accept(mText.getText()));
