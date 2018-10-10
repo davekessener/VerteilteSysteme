@@ -30,7 +30,16 @@ public class RedaktionUI
 	
 	public Node getUI( ) { return mRoot; }
 	
-	public void resetInput( ) { mText.setText(""); }
+	public void resetInput( )
+	{
+		mText.setText("");
+		mText.requestFocus();
+	}
+	
+	public void focus( )
+	{
+		mText.requestFocus();
+	}
 	
 	public void setOnSend(Consumer<String> cb)
 	{

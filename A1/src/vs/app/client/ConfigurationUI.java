@@ -1,9 +1,13 @@
 package vs.app.client;
 
+import java.util.function.Function;
+
 import javafx.beans.property.Property;
+import javafx.beans.property.SimpleIntegerProperty;
 import javafx.scene.Node;
 import javafx.scene.control.Label;
 import javafx.scene.layout.GridPane;
+import vs.app.ui.FilteredTextField;
 import vs.app.ui.IntegerTextField;
 import vs.work.ChatEngine;
 
@@ -29,11 +33,19 @@ public class ConfigurationUI
 		mRoot.addRow(0, new Label("Timeout Period: "), to_p, new Label("Timeout Count: "), to_n, new Label("Timeout Duration: "), to_d);
 		mRoot.addRow(1, new Label("Queue capacity: "), cap, new Label("Forget time: "), forget);
 		
-		mTimeoutPeriod = to_p.valueProperty();
-		mTimeoutCount = to_n.valueProperty();
-		mTimeoutDuration = to_d.valueProperty();
-		mCapacity = cap.valueProperty();
-		mForget = forget.valueProperty();
+		Function<FilteredTextField, Property<Number>> create = text -> {
+			Property<Number> value = new SimpleIntegerProperty();
+			
+			text.valueProperty().addListener((ob, o, n) -> value.setValue(Integer.parseInt(n)));
+			
+			return value;
+		};
+		
+		mTimeoutPeriod = create.apply(to_p);
+		mTimeoutCount = create.apply(to_n);
+		mTimeoutDuration = create.apply(to_d);
+		mCapacity = create.apply(cap);
+		mForget = create.apply(forget);
 	}
 
 	public Property<Number> timeoutPeriodProperty( ) { return mTimeoutPeriod; }

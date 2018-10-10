@@ -16,19 +16,20 @@ import javafx.scene.control.Alert;
 import javafx.scene.control.Alert.AlertType;
 import javafx.scene.control.ButtonType;
 import vs.app.common.Component;
+import vs.app.ui.QuickAlert;
 import vs.util.Properties;
 import vs.work.MessageService;
 
 public class RezeptionComponent implements Component
 {
-	private final MessageService mServer;
+	private final Property<MessageService> mServer;
 	private final RezeptionUI mUI;
 	private final ScheduledExecutorService mAsync;
 	private final BooleanProperty mConnected;
 	private Future<?> mRunning;
 	private long mFirstDisconnect;
 	
-	public RezeptionComponent(MessageService chat)
+	public RezeptionComponent(Property<MessageService> chat)
 	{
 		mServer = chat;
 		mUI = new RezeptionUI();
@@ -58,11 +59,7 @@ public class RezeptionComponent implements Component
 		mUI.connectedProperty().bind(mConnected);
 	}
 	
-	@Override
-	public BooleanProperty connectedProperty( )
-	{
-		return mConnected;
-	}
+	public BooleanProperty connectedProperty( ) { return mConnected; }
 	
 	private void manualUpdate( )
 	{
@@ -107,9 +104,7 @@ public class RezeptionComponent implements Component
 				mUI.activeProperty().set(false);
 				mFirstDisconnect = -1;
 				
-				Alert a = new Alert(AlertType.ERROR, "Connection to server lost!", ButtonType.OK);
-				
-				a.showAndWait();
+				QuickAlert.show(AlertType.ERROR, "Connection to server lost!", ButtonType.OK);
 			}
 		}
 	}
@@ -117,7 +112,7 @@ public class RezeptionComponent implements Component
 	private synchronized boolean retrieveNextMessage( ) throws RemoteException
 	{
 		Property<String> id = Properties.get(Properties.CLIENT_ID);
-		String msg = mServer.nextMessage(id.getValue());
+		String msg = mServer.getValue().nextMessage(id.getValue());
 		
 		mConnected.set(true);
 		

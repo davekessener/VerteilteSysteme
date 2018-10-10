@@ -43,11 +43,15 @@ public class App implements Actor
 		mPrimary.show();
 	}
 	
+	public BooleanProperty connectedProperty( ) { return mConnected; }
+	
 	public void addComponent(Component c)
 	{
 		mComponents.add(c);
+		
 		mUI.add(c.getUI());
-		mConnected.bindBidirectional(c.connectedProperty());
+		
+		c.focus();
 	}
 
 	@Override

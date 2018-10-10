@@ -2,8 +2,6 @@ package vs.app.client;
 
 import java.rmi.RemoteException;
 
-import javafx.beans.property.BooleanProperty;
-import javafx.beans.property.SimpleBooleanProperty;
 import javafx.scene.Node;
 import vs.app.common.Component;
 import vs.work.MessageServiceConfiguration;
@@ -12,13 +10,11 @@ public class ConfigurationComponent implements Component
 {
 	private final MessageServiceConfiguration mConfig;
 	private final ConfigurationUI mUI;
-	private final BooleanProperty mConnected;
 	
 	public ConfigurationComponent(MessageServiceConfiguration s)
 	{
 		mConfig = s;
 		mUI = new ConfigurationUI();
-		mConnected = new SimpleBooleanProperty();
 
 		mUI.timeoutPeriodProperty().addListener(o -> updateTimeout());
 		mUI.timeoutCountProperty().addListener(o -> updateTimeout());
@@ -51,12 +47,6 @@ public class ConfigurationComponent implements Component
 	public Node getUI()
 	{
 		return mUI.getUI();
-	}
-
-	@Override
-	public BooleanProperty connectedProperty()
-	{
-		return mConnected;
 	}
 	
 	private static interface Updater { void update( ) throws RemoteException; }
