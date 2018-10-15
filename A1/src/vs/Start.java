@@ -140,6 +140,7 @@ public class Start extends Application
 	private static String getDefaultID( ) throws SocketException
 	{
 		Enumeration<NetworkInterface> nics = NetworkInterface.getNetworkInterfaces();
+		String id = null;
 		
 		while(nics.hasMoreElements())
 		{
@@ -153,14 +154,22 @@ public class Start extends Application
 			
 			Enumeration<InetAddress> addresses = nic.getInetAddresses();
 			
-			if(!addresses.hasMoreElements()) continue;
-			
-			InetAddress a = addresses.nextElement();
-			
-			return a.getHostAddress();
+			while(addresses.hasMoreElements())
+			{
+				InetAddress a = addresses.nextElement();
+				String pot = a.getHostAddress().replaceAll("%.*$", "");
+				
+				if(id == null || pot.length() < id.length())
+				{
+					id = pot;
+				}
+			}
 		}
 		
-		throw new IllegalStateException("Could not find a valid network interface!");
+		if(id == null)
+			throw new IllegalStateException("Could not find a valid network interface!");
+		
+		return id;
 	}
 	
 	@Override

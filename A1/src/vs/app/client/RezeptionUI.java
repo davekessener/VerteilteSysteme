@@ -1,6 +1,7 @@
 package vs.app.client;
 
 import java.util.Arrays;
+import java.util.stream.Stream;
 
 import javafx.application.Platform;
 import javafx.beans.property.BooleanProperty;
@@ -57,7 +58,11 @@ public class RezeptionUI
 		active.setMinWidth(80);
 		
 		mText.setEditable(false);
-		mText.setFont(Font.font("Courier new", 12));
+		
+		Stream.of("Courier new", "Courier", "Monospace")
+			.map(n -> Font.font(n, 12))
+			.filter(f -> f != null)
+			.findFirst().ifPresent(mText::setFont);
 		
 		Arrays.stream(new HBox[] { manual, automatic }).forEach(hb -> {
 			hb.setSpacing(4);

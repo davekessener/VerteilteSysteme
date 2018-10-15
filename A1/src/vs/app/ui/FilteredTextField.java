@@ -33,7 +33,7 @@ public class FilteredTextField extends TextField
 		super(def);
 		
 		mCallback = f;
-		mValue = new SimpleStringProperty();
+		mValue = new SimpleStringProperty(def);
 		mErrorCallback = onerr;
 
 		this.focusedProperty().addListener((ob, o, n) -> {

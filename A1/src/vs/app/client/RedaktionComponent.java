@@ -105,6 +105,8 @@ public class RedaktionComponent implements Component
 				if(a.attempt < tries.getValue().intValue())
 				{
 					mAttempts.add(new Attempt(a));
+					
+					LOG.log(Severity.WARNING, "Failed to reach server (%d); retrying ...", a.attempt); 
 				}
 				else
 				{
