@@ -21,7 +21,6 @@ import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
-import javafx.scene.paint.Color;
 import javafx.scene.text.Font;
 import vs.app.ui.IntegerTextField;
 
@@ -31,7 +30,7 @@ public class RezeptionUI
 	private final Button mUpdate;
 	private final TextArea mText;
 	private final Property<Number> mFreq;
-	private final BooleanProperty mActive, mConnected;
+	private final BooleanProperty mActive;
 	
 	public RezeptionUI( )
 	{
@@ -41,7 +40,6 @@ public class RezeptionUI
 		mText = new TextArea();
 		mFreq = new SimpleIntegerProperty(DEF_FREQ);
 		mActive = new SimpleBooleanProperty(false);
-		mConnected = new SimpleBooleanProperty(false);
 		
 		TextField fr = new IntegerTextField(v -> v > 0, DEF_FREQ);
 		ComboBox<Mode> mode = new ComboBox<>();
@@ -74,22 +72,6 @@ public class RezeptionUI
 		
 		Label s = new Label();
 		
-		mConnected.addListener((ob, o, n) -> Platform.runLater(() -> {
-			if(n)
-			{
-				s.setText("Connected");
-				s.setTextFill(Color.GREEN);
-			}
-			else
-			{
-				s.setText("Disconnected");
-				s.setTextFill(Color.RED);
-			}
-		}));
-		
-		mConnected.set(true);
-		
-		top.add(new Label("Status: "), 0, 0);
 		top.add(s, 1, 0);
 		top.add(manual, 2, 0);
 		top.add(mode, 3, 0);
@@ -109,7 +91,7 @@ public class RezeptionUI
 		
 		active.setOnAction(e -> mActive.set(!mActive.get()));
 		
-		mActive.addListener(o -> active.setText(mActive.get() ? BTN_STOP : BTN_START));
+		mActive.addListener((ob, o, n) -> Platform.runLater(() -> active.setText(n ? BTN_STOP : BTN_START)));
 		fr.disableProperty().bind(mActive);
 
 		m.selectedItemProperty().addListener(o -> {
@@ -130,7 +112,6 @@ public class RezeptionUI
 	public Node getUI( ) { return mRoot; }
 	public int getFrequency( ) { return mFreq.getValue().intValue(); }
 	public BooleanProperty activeProperty( ) { return mActive; }
-	public BooleanProperty connectedProperty( ) { return mConnected; }
 	public void setOnUpdate(Runnable r) { mUpdate.setOnAction(e -> r.run()); }
 	
 	public void addMessage(String msg)

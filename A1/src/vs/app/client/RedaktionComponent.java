@@ -10,31 +10,31 @@ import java.util.concurrent.TimeUnit;
 
 import dave.util.log.Logger;
 import dave.util.log.Severity;
-import javafx.beans.property.BooleanProperty;
 import javafx.beans.property.Property;
-import javafx.beans.property.SimpleBooleanProperty;
+import javafx.beans.property.SimpleObjectProperty;
 import javafx.scene.Node;
 import javafx.scene.control.ButtonType;
 import javafx.scene.control.Alert.AlertType;
 import vs.app.common.Component;
 import vs.app.common.InternalRemoteException;
+import vs.app.common.Status;
 import vs.app.ui.QuickAlert;
 import vs.util.Properties;
 import vs.work.MessageService;
 
 public class RedaktionComponent implements Component
 {
-	private final Property<MessageService> mServer;
+	private final MessageService mServer;
 	private final Property<String> mID;
 	private final RedaktionUI mUI;
-	private final BooleanProperty mConnected;
+	private final Property<Status> mConnected;
 	private final ExecutorService mAsync;
 	private final BlockingQueue<Attempt> mAttempts;
 	
-	public RedaktionComponent(Property<MessageService> chat)
+	public RedaktionComponent(MessageService chat)
 	{
 		mServer = chat;
-		mConnected = new SimpleBooleanProperty(true);
+		mConnected = new SimpleObjectProperty<>(Status.CONNECTED);
 		mID = Properties.get(Properties.CLIENT_ID);
 		mUI = new RedaktionUI();
 		mAsync = Executors.newSingleThreadExecutor();
@@ -43,7 +43,7 @@ public class RedaktionComponent implements Component
 		mUI.setOnSend(this::sendMessage);
 	}
 	
-	public BooleanProperty connectedProperty( ) { return mConnected; }
+	public Property<Status> connectedProperty( ) { return mConnected; }
 	
 	@Override
 	public void focus( )
@@ -71,15 +71,8 @@ public class RedaktionComponent implements Component
 	
 	private void sendMessage(String msg)
 	{
-		if(mServer.getValue() == null)
-		{
-			QuickAlert.show(AlertType.ERROR, "No remote service selected!", ButtonType.OK);
-		}
-		else
-		{
-			mAttempts.add(new Attempt(msg));
-			mUI.resetInput();
-		}
+		mAttempts.add(new Attempt(msg));
+		mUI.resetInput();
 	}
 	
 	private int run( ) throws InterruptedException
@@ -90,7 +83,9 @@ public class RedaktionComponent implements Component
 			
 			try
 			{
-				mServer.getValue().newMessage(mID.getValue(), a.message);
+				mServer.newMessage(mID.getValue(), a.message);
+				
+				mConnected.setValue(Status.CONNECTED);
 			}
 			catch(InternalRemoteException e)
 			{
@@ -104,13 +99,15 @@ public class RedaktionComponent implements Component
 				
 				if(a.attempt < tries.getValue().intValue())
 				{
+					mConnected.setValue(Status.SEARCHING);
+					
 					mAttempts.add(new Attempt(a));
 					
 					LOG.log(Severity.WARNING, "Failed to reach server (%d); retrying ...", a.attempt); 
 				}
 				else
 				{
-					mConnected.set(false);
+					mConnected.setValue(Status.DISCONNECTED);
 					
 					LOG.log(Severity.ERROR, "Can't send message to server: %s", e.getMessage());
 					

@@ -4,13 +4,14 @@ import java.util.ArrayList;
 import java.util.List;
 
 import dave.util.Actor;
-import javafx.beans.property.BooleanProperty;
-import javafx.beans.property.SimpleBooleanProperty;
+import javafx.beans.property.Property;
+import javafx.beans.property.SimpleObjectProperty;
 import javafx.scene.Node;
 import javafx.scene.Scene;
 import javafx.scene.layout.AnchorPane;
 import javafx.stage.Stage;
 import vs.app.common.Component;
+import vs.app.common.Status;
 import vs.app.ui.AppUI;
 
 public class App implements Actor
@@ -18,14 +19,14 @@ public class App implements Actor
 	private final Stage mPrimary;
 	private final AppUI mUI;
 	private final List<Component> mComponents;
-	private final BooleanProperty mConnected;
+	private final Property<Status> mConnected;
 	
 	public App(Stage primary)
 	{
 		mPrimary = primary;
 		mUI = new AppUI();
 		mComponents = new ArrayList<>();
-		mConnected = new SimpleBooleanProperty(true);
+		mConnected = new SimpleObjectProperty<>(null);
 		
 		AnchorPane root = new AnchorPane();
 		Node ui = mUI.getUI();
@@ -43,7 +44,7 @@ public class App implements Actor
 		mPrimary.show();
 	}
 	
-	public BooleanProperty connectedProperty( ) { return mConnected; }
+	public Property<Status> connectedProperty( ) { return mConnected; }
 	
 	public void addComponent(Component c)
 	{

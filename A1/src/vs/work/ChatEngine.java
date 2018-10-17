@@ -263,7 +263,7 @@ public class ChatEngine implements MessageService, MessageServiceConfiguration, 
 	public static final int DEF_TIMEOUT_COUNT = 10;
 	public static final int DEF_TIMEOUT_DURATION = 10 * 1000;
 	public static final int DEF_CAPACITY = 15;
-	public static final int DEF_FORGET = 5 * 1000;
+	public static final int DEF_FORGET = 30 * 1000;
 	
 	private static final DateFormat FORMAT = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS");
 	private static final Logger LOG = Logger.get("chat");

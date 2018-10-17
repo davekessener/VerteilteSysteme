@@ -8,37 +8,37 @@ import java.util.concurrent.TimeUnit;
 
 import dave.util.log.Logger;
 import dave.util.log.Severity;
-import javafx.beans.property.BooleanProperty;
 import javafx.beans.property.Property;
-import javafx.beans.property.SimpleBooleanProperty;
+import javafx.beans.property.SimpleObjectProperty;
 import javafx.scene.Node;
 import javafx.scene.control.Alert;
 import javafx.scene.control.Alert.AlertType;
 import javafx.scene.control.ButtonType;
 import vs.app.common.Component;
+import vs.app.common.Status;
 import vs.app.ui.QuickAlert;
 import vs.util.Properties;
 import vs.work.MessageService;
 
 public class RezeptionComponent implements Component
 {
-	private final Property<MessageService> mServer;
+	private final MessageService mServer;
 	private final RezeptionUI mUI;
 	private final ScheduledExecutorService mAsync;
-	private final BooleanProperty mConnected;
+	private final Property<Status> mConnected;
 	private Future<?> mRunning;
 	private long mFirstDisconnect;
 	
-	public RezeptionComponent(Property<MessageService> chat)
+	public RezeptionComponent(MessageService chat)
 	{
 		mServer = chat;
 		mUI = new RezeptionUI();
 		mAsync = Executors.newSingleThreadScheduledExecutor();
-		mConnected = new SimpleBooleanProperty(true);
+		mConnected = new SimpleObjectProperty<>(Status.CONNECTED);
 		mFirstDisconnect = -1;
 		
-		mConnected.addListener(o -> {
-			if(mConnected.get())
+		mConnected.addListener((ob, o, n) -> {
+			if(o == Status.CONNECTED)
 			{
 				mFirstDisconnect = -1;
 			}
@@ -56,10 +56,9 @@ public class RezeptionComponent implements Component
 				mRunning = null;
 			}
 		});
-		mUI.connectedProperty().bind(mConnected);
 	}
 	
-	public BooleanProperty connectedProperty( ) { return mConnected; }
+	public Property<Status> connectedProperty( ) { return mConnected; }
 	
 	private void manualUpdate( )
 	{
@@ -75,7 +74,8 @@ public class RezeptionComponent implements Component
 		catch(RemoteException e)
 		{
 			LOG.log(Severity.ERROR, "Connection to server failed: %s", e.getMessage());
-			mConnected.setValue(false);
+			
+			mConnected.setValue(Status.DISCONNECTED);
 			
 			Alert a = new Alert(AlertType.ERROR, "Can't connect to server:\n\"" + e.getMessage() + "\"", ButtonType.OK);
 			
@@ -91,11 +91,12 @@ public class RezeptionComponent implements Component
 		}
 		catch(RemoteException e)
 		{
-			LOG.log(Severity.ERROR, "Connection to server failed: %s", e.getMessage());
-			mConnected.setValue(false);
-			
 			Property<Number> timeout = Properties.get(Properties.SERVER_FAILURE_TIMEOUT);
 			long t = System.currentTimeMillis();
+			
+			LOG.log(Severity.ERROR, "Connection to server failed: %s", e.getMessage());
+			
+			mConnected.setValue(Status.SEARCHING);
 			
 			if(mFirstDisconnect == -1) mFirstDisconnect = t;
 			
@@ -103,6 +104,8 @@ public class RezeptionComponent implements Component
 			{
 				mUI.activeProperty().set(false);
 				mFirstDisconnect = -1;
+				
+				mConnected.setValue(Status.DISCONNECTED);
 				
 				QuickAlert.show(AlertType.ERROR, "Connection to server lost!", ButtonType.OK);
 			}
@@ -112,9 +115,9 @@ public class RezeptionComponent implements Component
 	private synchronized boolean retrieveNextMessage( ) throws RemoteException
 	{
 		Property<String> id = Properties.get(Properties.CLIENT_ID);
-		String msg = mServer.getValue().nextMessage(id.getValue());
+		String msg = mServer.nextMessage(id.getValue());
 		
-		mConnected.set(true);
+		mConnected.setValue(Status.CONNECTED);
 		
 		if(msg != null) mUI.addMessage(msg);
 		

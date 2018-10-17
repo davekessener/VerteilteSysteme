@@ -18,9 +18,9 @@ public final class Properties
 	
 	public static final class Defaults
 	{
-		public static final int SERVER_FAILURE_TIMEOUT = 5 * 1000;
+		public static final int SERVER_FAILURE_TIMEOUT = 20 * 1000;
 		public static final String CLIENT_ID = "127.0.0.1";
-		public static final int TRANSMIT_RETRIES = 5;
+		public static final int TRANSMIT_RETRIES = 8;
 		
 		private Defaults( ) { }
 	}

@@ -13,6 +13,7 @@ import javafx.scene.Node;
 import javafx.scene.control.Alert.AlertType;
 import javafx.scene.control.ButtonType;
 import vs.app.common.Component;
+import vs.app.common.Status;
 import vs.app.ui.QuickAlert;
 
 public class RemoteComponent<T extends Remote> implements Component
@@ -20,18 +21,25 @@ public class RemoteComponent<T extends Remote> implements Component
 	private final Property<T> mBean;
 	private final String mService;
 	private final RemoteUI mUI;
+	private final Property<Status> mConnected;
+	private String mHost;
+	private int mPort;
 	
 	public RemoteComponent(String service, String host, int port)
 	{
 		mBean = new SimpleObjectProperty<>();
 		mService = service;
 		mUI = new RemoteUI(host, port);
+		mConnected = new SimpleObjectProperty<>(null);
 		
 		mUI.onUpdate(this::update);
+		
+		mConnected.addListener((ob, o, n) -> mUI.setStatus(n));
 		
 		update(host, port);
 	}
 	
+	public Property<Status> connectedProperty( ) { return mConnected; }
 	public Property<T> serviceProperty( ) { return mBean; }
 	
 	@Override
@@ -40,19 +48,40 @@ public class RemoteComponent<T extends Remote> implements Component
 		return mUI.getUI();
 	}
 	
-	@SuppressWarnings("unchecked")
+	public void refresh( )
+	{
+		try
+		{
+			retrieve(mHost, mPort);
+		}
+		catch(RemoteException | NotBoundException e)
+		{
+			mConnected.setValue(Status.SEARCHING);
+		}
+	}
+	
 	private void update(String host, int port)
 	{
 		try
 		{
-			mBean.setValue((T) LocateRegistry.getRegistry(host, port).lookup(mService));
+			retrieve(host, port);
+			
+			mUI.setRemote(mHost = host, mPort = port);
 		}
 		catch(RemoteException | NotBoundException e)
 		{
 			LOG.log(Severity.ERROR, "Could not connected to [%s]:%d! (%s)", host, port, e.getMessage());
-			
+
 			QuickAlert.show(AlertType.ERROR, String.format("Failed to connect to [%s]:%d\n\"%s\"", host, port, e.getMessage()), ButtonType.OK);
 		}
+	}
+
+	@SuppressWarnings("unchecked")
+	private void retrieve(String host, int port) throws RemoteException, NotBoundException
+	{
+		mBean.setValue((T) LocateRegistry.getRegistry(host, port).lookup(mService));
+		
+		mConnected.setValue(Status.CONNECTED);
 	}
 	
 	private static final Logger LOG = Logger.get("remote");
