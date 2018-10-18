@@ -121,7 +121,7 @@ public class ChatEngine implements MessageService, MessageServiceConfiguration, 
 			{
 				for(Entry e : mMessages)
 				{
-					if(e.id > c.last)
+					if(e.id > c.last) // retrieve the next message
 					{
 						next = e.message;
 						c.last = e.id;
@@ -166,6 +166,8 @@ public class ChatEngine implements MessageService, MessageServiceConfiguration, 
 			Client c = get(cid);
 			long t = System.currentTimeMillis();
 			
+			// if the client has been timed out (and the timeout has not expired yet)
+			// OR the client is actively spamming, time the client out.
 			if((c.timeout > 0 && t - c.timeout < mTimeoutDuration) || !c.history.next())
 			{
 				c.timeout = t;
@@ -206,6 +208,9 @@ public class ChatEngine implements MessageService, MessageServiceConfiguration, 
 			mClients.put(cid, c = new Client());
 		}
 		
+		// if deletion has been scheduled and could not be
+		// canceled (because it has already been executed)
+		// re-insert client
 		if(c.deleter != null && !c.deleter.cancel(false))
 		{
 			mClients.put(cid, c);

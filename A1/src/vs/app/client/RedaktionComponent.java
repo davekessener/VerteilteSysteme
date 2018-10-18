@@ -87,7 +87,7 @@ public class RedaktionComponent implements Component
 				
 				mConnected.setValue(Status.CONNECTED);
 			}
-			catch(InternalRemoteException e)
+			catch(InternalRemoteException e) // error is because of a malformed request/spam, not a connection error
 			{
 				LOG.log(Severity.ERROR, "Invalid: %s", e.getMessage());
 				

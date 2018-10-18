@@ -84,10 +84,11 @@ public class Start extends Application
 
 			System.out.println(InetAddress.getLocalHost().getHostAddress());
 
-			if(args.hasArgument(o_server))
+			if(args.hasArgument(o_server)) // Program started in server mode
 			{
 				System.setProperty("java.rmi.server.hostname", host);
 				
+				// Instantiate MessageService object and export it to the registry
 				ChatEngine chat = new ChatEngine();
 				MessageService stub = (MessageService) UnicastRemoteObject.exportObject(chat, 0);
 				
@@ -100,14 +101,16 @@ public class Start extends Application
 				
 				primary.setTitle(TITLE + "Server");
 			}
-			else if(args.hasArgument(o_client))
+			else if(args.hasArgument(o_client)) // Program started in client mode
 			{
 				String id = args.getArgument(o_id);
 				Properties.set(Properties.CLIENT_ID, id);
 				
 				RemoteComponent<MessageService> c_remote = new RemoteComponent<>(SERVICE_CHAT, host, port);
-				MessageServiceProxy proxy = new MessageServiceProxy(p -> c_remote.refresh());
+				MessageServiceProxy proxy = new MessageServiceProxy(p -> c_remote.refresh()); // Proxy object encapsulating remote MessageService
 				
+				// if the RemoteComponent's stub object changes (either by the user changing the registry
+				// in the UI or by the proxy requesting a refresh upon error) update the proxy
 				c_remote.serviceProperty().addListener((ob, o, n) -> proxy.set(n));
 				proxy.set(c_remote.serviceProperty().getValue());
 				

@@ -1,5 +1,13 @@
 package vs.util;
 
+/**
+ *  Utility class used to track the
+ *  frequency of messages sent.
+ *  next() is called with every message;
+ *  its return value determines if the
+ *  message should be accepted (true) or
+ *  if it constitutes spam (false)
+ */
 public class FrequencyQueue
 {
 	private final long[] mBuf;

@@ -48,6 +48,8 @@ public class RemoteComponent<T extends Remote> implements Component
 		return mUI.getUI();
 	}
 	
+	// the proxy has encountered an error -> try to retrieve another
+	// stub from the registry
 	public void refresh( )
 	{
 		try
