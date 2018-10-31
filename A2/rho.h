@@ -26,6 +26,7 @@ namespace vs
 	class RhoFactorizer
 	{
 		public:
+			RhoFactorizer( ) { }
 			RhoFactorizer(T v, T x, T a) : mX(x), mY(x), mP(1), mA(a), mN(v) { }
 			bool done( ) const { return mP != 1; }
 			const T& get( ) const { return mP; }
@@ -36,7 +37,7 @@ namespace vs
 
 		private:
 			T mX, mY, mP;
-			const T mA, mN;
+			T mA, mN;
 	};
 
 	template<typename T>

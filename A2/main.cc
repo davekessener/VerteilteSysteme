@@ -45,36 +45,52 @@ using boost::multiprecision::uint512_t;
 typedef unsigned uint;
 
 using w_process_a = atom_constant<atom("w_process")>;
+using w_resume_a = atom_constant<atom("w_resume")>;
 using w_abort_a = atom_constant<atom("w_abort")>;
 
 
 using worker = typed_actor<
 	replies_to<w_process_a, std::string, uint>::with<std::string>,
+	replies_to<w_resume_a>::with<std::string>,
 	reacts_to<w_abort_a>
 >;
 
 struct worker_state
 {
 	bool running = true;
+	vs::RhoFactorizer<uint512_t> fact;
 };
 
 worker::behavior_type worker_actor(worker::stateful_pointer<worker_state> self)
 {
 	return {
-		[=](w_process_a, std::string n, uint a) -> std::string {
+		[=](w_process_a, std::string n, uint a) {
 			boost::random::mt19937 mt;
 			boost::random::uniform_int_distribution<uint512_t> rng;
 
-			vs::RhoFactorizer<uint512_t> ft(uint512_t{n}, rng(mt), a);
+			self->state.fact = { uint512_t{n}, rng(mt), a };
 
-			while(!ft.done())
+			return self->delegate(worker{self}, w_resume_a::value);
+		},
+		[=](w_resume_a) -> result<std::string> {
+			auto *ft = &self->state.fact;
+
+			while(!ft->done())
 			{
-				ft.step();
+				ft->step();
 
-				if(!self->state.running) break;
+				if(!self->mailbox().empty())
+				{
+					return self->delegate(worker{self}, w_resume_a::value);
+				}
+
+				if(!self->state.running)
+				{
+					return "";
+				}
 			}
 
-			return ft.done() ? stringify(ft.get()) : n;
+			return stringify(ft->get());
 		},
 		[=](w_abort_a) {
 			self->state.running = false;
@@ -128,9 +144,30 @@ void caf_main(actor_system& sys, const config& cfg)
 
 		if(a)
 		{
-			auto f = make_function_view(*a);
+			using namespace std::chrono_literals;
 
-			std::cout << "A pot. prime factor of " << cfg.value << ": " << f(w_process_a::value, cfg.value, 3u) << std::endl;
+			scoped_actor self{sys};
+
+			aout(self) << "Requesting a factor of " << cfg.value << std::endl;
+
+			self->send(*a, w_process_a::value, cfg.value, 3u);
+
+			std::this_thread::sleep_for(1s);
+
+			if(self->mailbox().empty())
+			{
+				self->send(*a, w_abort_a::value);
+				aout(self) << "Timeout; aborting ..." << std::endl;
+			}
+			else
+			{
+				self->receive([&](const std::string& f) {
+					aout(self) << "Received factor " << f << std::endl;
+				});
+			}
+
+//			auto f = make_function_view(*a);
+//			std::cout << "A pot. prime factor of " << cfg.value << ": " << f(w_process_a::value, cfg.value, 3u) << std::endl;
 		}
 		else
 		{
