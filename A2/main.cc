@@ -1,6 +1,5 @@
 #include <iostream>
-#include <sstream>
-#include <stdint.h>
+#include <vector>
 
 #include <boost/multiprecision/cpp_int.hpp>
 #include <boost/random/uniform_int_distribution.hpp>
@@ -9,94 +8,93 @@
 #include <caf/all.hpp>
 #include <caf/io/all.hpp>
 
+#include "util.h"
 #include "rho.h"
+#include "worker.h"
 
+// # --------------------------------------------------------------------------
 
-namespace impl
+using namespace vs;
+
+namespace distributor
 {
-	template<typename S>
-	void stringify(S&)
+	namespace action
 	{
+		using caf::atom;
+		using caf::atom_constant;
+
+		using reg = atom_constant<atom("d_reg")>;
+		using unreg = atom_constant<atom("d_unreg")>;
+		using process = atom_constant<atom("d_process")>;
 	}
 
-	template<typename S, typename T, typename ... TT>
-	void stringify(S& ss, const T& o, const TT& ... a)
+	struct result
 	{
-		ss << o;
+		std::vector<std::pair<uint, uint>> factors;
+		uint cpu_time = 0;
+		uint cycles = 0;
+	};
+	
+	template<typename Inspector>
+	typename Inspector::result_type inspect(Inspector& f, result& v)
+	{
+		return f(caf::meta::type_name("result"), v.factors, v.cpu_time, v.cycles);
+	}
+	
+	using actor = caf::typed_actor<
+		caf::reacts_to<action::reg, std::string, uint16_t>,
+		caf::reacts_to<action::unreg, std::string, uint16_t>,
+		caf::replies_to<action::process, std::string>::with<result>
+	>;
 
-		stringify(ss, a...);
+	struct state
+	{
+		std::map<std::string, worker::actor> workers;
+	};
+
+	actor::behavior_type behavior(actor::stateful_pointer<state> self, caf::io::middleman *mm)
+	{
+		return {
+			[=](action::reg, std::string host, uint16_t port) {
+				std::string id = stringify(host, ":", port);
+				auto p = mm->remote_actor<worker::actor>(host, port);
+				if(p)
+				{
+					caf::aout(self) << "Registered worker " << id << std::endl;
+					self->state.workers[id] = p.value();
+				}
+				else
+				{
+					caf::aout(self) << "Could not connect to worker " << id << ": " << p << std::endl;
+				}
+			},
+			[=](action::unreg, std::string host, uint16_t port) {
+				std::string id = stringify(host, ":", port);
+				self->state.workers[id] = nullptr;
+			},
+			[=](action::process, std::string n) {
+				uint a = 1;
+				for(const auto& e : self->state.workers)
+				{
+					self->request(e.second, caf::infinite, worker::action::process::value, n, a)
+						.then([=](std::string f) {
+							caf::aout(self) << "Found " << f << std::endl;
+
+							for(const auto& e : self->state.workers)
+							{
+								self->send(e.second, worker::action::abort::value);
+							}
+					});
+				}
+				return result{};
+			}
+		};
 	}
 }
 
-template<typename ... T>
-std::string stringify(const T& ... a)
-{
-	std::stringstream ss;
-
-	impl::stringify(ss, a...);
-
-	return ss.str();
-}
-
+// # --------------------------------------------------------------------------
 
 using namespace caf;
-
-using boost::multiprecision::uint512_t;
-typedef unsigned uint;
-
-using w_process_a = atom_constant<atom("w_process")>;
-using w_resume_a = atom_constant<atom("w_resume")>;
-using w_abort_a = atom_constant<atom("w_abort")>;
-
-
-using worker = typed_actor<
-	replies_to<w_process_a, std::string, uint>::with<std::string>,
-	replies_to<w_resume_a>::with<std::string>,
-	reacts_to<w_abort_a>
->;
-
-struct worker_state
-{
-	bool running = true;
-	vs::RhoFactorizer<uint512_t> fact;
-};
-
-worker::behavior_type worker_actor(worker::stateful_pointer<worker_state> self)
-{
-	return {
-		[=](w_process_a, std::string n, uint a) {
-			boost::random::mt19937 mt;
-			boost::random::uniform_int_distribution<uint512_t> rng;
-
-			self->state.fact = { uint512_t{n}, rng(mt), a };
-
-			return self->delegate(worker{self}, w_resume_a::value);
-		},
-		[=](w_resume_a) -> result<std::string> {
-			auto *ft = &self->state.fact;
-
-			while(!ft->done())
-			{
-				ft->step();
-
-				if(!self->mailbox().empty())
-				{
-					return self->delegate(worker{self}, w_resume_a::value);
-				}
-
-				if(!self->state.running)
-				{
-					return "";
-				}
-			}
-
-			return stringify(ft->get());
-		},
-		[=](w_abort_a) {
-			self->state.running = false;
-		}
-	};
-}
 
 std::ostream& operator<<(std::ostream& os, const expected<message>& msg)
 {
@@ -111,6 +109,7 @@ struct config : actor_system_config
 	bool server = false;
 
 	config( ) {
+		add_message_type<distributor::result>("result"),
 		opt_group{custom_options_, "global"}
 			.add(value, "value,V", "Value to be factorized")
 			.add(host, "host,H", "Server hostname")
@@ -127,11 +126,11 @@ void caf_main(actor_system& sys, const config& cfg)
 
 	if(cfg.server)
 	{
-		auto p = mm.publish(sys.spawn(worker_actor), cfg.port);
+		auto p = mm.publish(sys.spawn(worker::behavior), cfg.port);
 
 		if(p)
 		{
-			std::cout << "Worker started on port " << *p << std::endl;
+			std::cout << "Worker running on port " << *p << std::endl;
 		}
 		else
 		{
@@ -140,39 +139,16 @@ void caf_main(actor_system& sys, const config& cfg)
 	}
 	else
 	{
-		auto a = mm.remote_actor<worker>(cfg.host, cfg.port);
+		scoped_actor self{sys};
+		auto d = sys.spawn(distributor::behavior, &mm);
 
-		if(a)
-		{
-			using namespace std::chrono_literals;
-
-			scoped_actor self{sys};
-
-			aout(self) << "Requesting a factor of " << cfg.value << std::endl;
-
-			self->send(*a, w_process_a::value, cfg.value, 3u);
-
-			std::this_thread::sleep_for(1s);
-
-			if(self->mailbox().empty())
-			{
-				self->send(*a, w_abort_a::value);
-				aout(self) << "Timeout; aborting ..." << std::endl;
+		self->send(d, distributor::action::reg::value, cfg.host, cfg.port);
+		self->request(d, infinite, distributor::action::process::value, cfg.value).receive(
+			[&](distributor::result r) {
+			},
+			[&](error& e) {
 			}
-			else
-			{
-				self->receive([&](const std::string& f) {
-					aout(self) << "Received factor " << f << std::endl;
-				});
-			}
-
-//			auto f = make_function_view(*a);
-//			std::cout << "A pot. prime factor of " << cfg.value << ": " << f(w_process_a::value, cfg.value, 3u) << std::endl;
-		}
-		else
-		{
-			std::cerr << "Failed to connect to worker: " << sys.render(a.error()) << std::endl;
-		}
+		);
 	}
 }
 

@@ -1,7 +1,6 @@
 #ifndef VS_RHO_H
 #define VS_RHO_H
 
-#include <boost/multiprecision/cpp_int.hpp>
 #include <boost/math/common_factor.hpp>
 
 namespace vs
