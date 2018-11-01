@@ -42,6 +42,36 @@ namespace vs
 	
 		return ss.str();
 	}
+
+	template<typename T>
+	uint divideAll(T& v, T f)
+	{
+		uint c = 0;
+
+		while(true)
+		{
+			auto p = v / f;
+
+			if(p * f != v) break;
+
+			v = p;
+			++c;
+		}
+
+		return c;
+	}
+
+	template<typename V>
+	constexpr V min(const V& a, const V& b) noexcept
+	{
+		return a < b ? a : b;
+	}
+
+	template<typename V>
+	constexpr V max(const V& a, const V& b) noexcept
+	{
+		return a > b ? a : b;
+	}
 }
 
 #endif

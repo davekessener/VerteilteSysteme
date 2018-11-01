@@ -18,19 +18,55 @@ namespace vs
 			using abort = atom_constant<atom("w_abort")>;
 		}
 
+		struct result
+		{
+			std::string factor, source;
+			uint cpu_time = 0;
+			uint cycles = 0;
+			uint tries = 0;
+		};
+
 		using actor = caf::typed_actor<
-			caf::replies_to<action::process, std::string, uint>::with<std::string>,
-			caf::replies_to<action::resume>::with<std::string>,
+			caf::replies_to<action::process, std::string, uint, uint>::with<result>,
+			caf::reacts_to<action::resume>,
 			caf::reacts_to<action::abort>
 		>;
 
-		struct state
+		class State
 		{
-			bool running = true;
-			RhoFactorizer<uint512_t> fact;
+			typedef boost::random::uniform_int_distribution<uint512_t> d_t;
+
+			public:
+				void set(uint512_t, uint, uint, caf::response_promise);
+				void step( );
+				void abort( );
+
+				bool done( ) const { return !mRunning || mFact.done(); }
+				void add(uint t) { mTime += t; }
+
+			private:
+				result get( ) const;
+				void reset( );
+
+			private:
+				boost::random::mt19937 mMT;
+				d_t mRNG;
+				bool mRunning;
+				uint512_t mNumber;
+				uint mA;
+				uint512_t mCount, mLeft;
+				uint mTime, mCycles, mTries;
+				RhoFactorizer<uint512_t> mFact;
+				caf::response_promise mPromise;
 		};
 
-		actor::behavior_type behavior(actor::stateful_pointer<state>);
+		actor::behavior_type behavior(actor::stateful_pointer<State>, uint16_t);
+
+		template<typename Inspector>
+		typename Inspector::result_type inspect(Inspector& f, result& r)
+		{
+			return f(caf::meta::type_name("w_result"), r.factor, r.source, r.cpu_time, r.cycles, r.tries);
+		}
 	}
 }
 

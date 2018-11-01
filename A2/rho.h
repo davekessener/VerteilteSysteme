@@ -1,24 +1,35 @@
 #ifndef VS_RHO_H
 #define VS_RHO_H
 
+#include <boost/multiprecision/miller_rabin.hpp>
 #include <boost/math/common_factor.hpp>
+
+#define MXT_PRIME_TRIALS 25
+#define MXT_SMALL_NUMBER uint512_t{"10000000000"}
 
 namespace vs
 {
 	template<typename T>
 	bool isPrime(const T& v)
 	{
-		if(v <= 1) return false;
-		if(v == 2 || v == 3) return true;
-		if(!(v & 1) || (v % 3) == 0) return false;
-
-		for(T i = 5 ; i * i <= v ; i += 6)
+		if(v < MXT_SMALL_NUMBER)
 		{
-			if((v % i) == 0 || (v % (i + 2)) == 0)
-				return false;
-		}
+			if(v <= 1) return false;
+			if(v == 2 || v == 3) return true;
+			if(!(v & 1) || (v % 3) == 0) return false;
+
+			for(T i = 5 ; i * i <= v ; i += 6)
+			{
+				if((v % i) == 0 || (v % (i + 2)) == 0)
+					return false;
+			}
 	
-		return true;
+			return true;
+		}
+		else
+		{
+			return boost::multiprecision::miller_rabin_test(v, MXT_PRIME_TRIALS);
+		}
 	}
 
 	template<typename T>
