@@ -6,14 +6,16 @@
 
 namespace vs { namespace worker {
 
-actor::behavior_type behavior(actor::stateful_pointer<State> self, uint16_t port)
+actor::behavior_type behavior(actor::stateful_pointer<State> self, uint id)
 {
 	return {
 		[=](action::process, const std::string& n, uint a, uint l) -> caf::result<result> {
 			uint512_t v(n);
 
-			if(v <= 1)
+			if(v <= 1 || (v % 2) != 1)
 			{
+				aout(self) << "[" << id << "] Received invalid request: " << n << std::endl;
+
 				return result{};
 			}
 			else
@@ -46,6 +48,9 @@ actor::behavior_type behavior(actor::stateful_pointer<State> self, uint16_t port
 		},
 		[=](action::abort) {
 			self->state.abort();
+		},
+		[=](action::kill) {
+			self->quit();
 		}
 	};
 }

@@ -16,6 +16,7 @@ namespace vs
 			using process = atom_constant<atom("w_process")>;
 			using resume = atom_constant<atom("w_resume")>;
 			using abort = atom_constant<atom("w_abort")>;
+			using kill = atom_constant<atom("w_kill")>;
 		}
 
 		struct result
@@ -29,7 +30,8 @@ namespace vs
 		using actor = caf::typed_actor<
 			caf::replies_to<action::process, std::string, uint, uint>::with<result>,
 			caf::reacts_to<action::resume>,
-			caf::reacts_to<action::abort>
+			caf::reacts_to<action::abort>,
+			caf::reacts_to<action::kill>
 		>;
 
 		class State
@@ -60,7 +62,7 @@ namespace vs
 				caf::response_promise mPromise;
 		};
 
-		actor::behavior_type behavior(actor::stateful_pointer<State>, uint16_t);
+		actor::behavior_type behavior(actor::stateful_pointer<State>, uint);
 
 		template<typename Inspector>
 		typename Inspector::result_type inspect(Inspector& f, result& r)
