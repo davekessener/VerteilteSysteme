@@ -1,5 +1,7 @@
 #include "manager.h"
 
+#define MXT_RETRY_P (std::chrono::seconds(3))
+
 namespace vs {
 
 namespace manager {
@@ -27,7 +29,7 @@ struct state
 	uint nextID = 0;
 	struct
 	{
-		distributor::actor actor;
+		distributor::actor handle;
 		std::string host;
 		uint16_t port = 0;
 	} dis;
@@ -41,6 +43,7 @@ namespace action
 	using init = atom_constant<atom("m_init")>;
 	using set_size = atom_constant<atom("m_size")>;
 	using set_dis = atom_constant<atom("m_dis")>;
+	using reconnect = atom_constant<atom("m_recon")>;
 	using shutdown = atom_constant<atom("m_shutdown")>;
 	using kill = atom_constant<atom("m_kill")>;
 }
@@ -49,6 +52,7 @@ using actor = caf::typed_actor<
 	caf::reacts_to<action::init, std::string>,
 	caf::reacts_to<action::set_size, uint>,
 	caf::reacts_to<action::set_dis, std::string, uint16_t>,
+	caf::reacts_to<action::reconnect>,
 	caf::reacts_to<action::shutdown>,
 	caf::reacts_to<action::kill>
 >;
@@ -61,9 +65,12 @@ actor::behavior_type behavior(actor::stateful_pointer<state> self)
 			self->state.mm = &self->system().middleman();
 
 			self->set_down_handler([self](caf::down_msg& msg) {
-				if(self->state.dis.actor && msg.source == self->state.dis.actor.address())
+				if(self->state.dis.handle && msg.source == self->state.dis.handle.address())
 				{
 					aout(self) << "Distributor " << self->state.dis.host << ":" << self->state.dis.port << " terminated!" << std::endl;
+
+					self->state.dis.handle = nullptr;
+					self->send(self, action::set_dis::value, self->state.dis.host, self->state.dis.port);
 				}
 				else for(const auto& w : self->state.workers)
 				{
@@ -110,9 +117,9 @@ actor::behavior_type behavior(actor::stateful_pointer<state> self)
 					self->state.workers.emplace_back(w, *p, id);
 					self->monitor(w);
 
-					if(self->state.dis.actor)
+					if(self->state.dis.handle)
 					{
-						self->send(self->state.dis.actor, distributor::action::reg::value, self->state.host, *p);
+						self->send(self->state.dis.handle, distributor::action::reg::value, self->state.host, *p);
 					}
 				}
 			}
@@ -133,36 +140,47 @@ actor::behavior_type behavior(actor::stateful_pointer<state> self)
 		[self](action::set_dis, const std::string& host, uint16_t port) {
 			aout(self) << "Setting distributor " << host << ":" << port << std::endl;
 
+			if(self->state.dis.handle)
+			{
+				aout(self) << "Unregistering with " << self->state.dis.host << ":" << self->state.dis.port << std::endl;
+
+				self->demonitor(self->state.dis.handle.address());
+
+				for(const auto& w : self->state.workers)
+				{
+					self->send(self->state.dis.handle, distributor::action::unreg::value, self->state.host, w.port);
+				}
+
+				self->state.dis.handle = nullptr;
+			}
+
+			self->state.dis.host = host;
+			self->state.dis.port = port;
+
 			auto r = self->system().middleman().remote_actor<distributor::actor>(host, port);
 
 			if(r)
 			{
-				if(static_cast<bool>(self->state.dis.actor))
-				{
-					aout(self) << "Unregistering with " << self->state.dis.host << ":" << self->state.dis.port << std::endl;
-
-					self->demonitor(self->state.dis.actor.address());
-
-					for(const auto& w : self->state.workers)
-					{
-						self->send(self->state.dis.actor, distributor::action::unreg::value, self->state.host, w.port);
-					}
-				}
-
-				self->state.dis.host = host;
-				self->state.dis.port = port;
-				self->state.dis.actor = r.value();
+				self->state.dis.handle = r.value();
 
 				for(const auto& w : self->state.workers)
 				{
-					self->send(self->state.dis.actor, distributor::action::reg::value, self->state.host, w.port);
+					self->send(self->state.dis.handle, distributor::action::reg::value, self->state.host, w.port);
 				}
 
-				self->monitor(self->state.dis.actor);
+				self->monitor(self->state.dis.handle);
 			}
 			else
 			{
 				aout(self) << "Failed to connect!" << std::endl;
+
+				self->delayed_send(self, MXT_RETRY_P, action::reconnect::value);
+			}
+		},
+		[self](action::reconnect) {
+			if(!self->state.dis.handle)
+			{
+				self->send(self, action::set_dis::value, self->state.dis.host, self->state.dis.port);
 			}
 		}
 	};

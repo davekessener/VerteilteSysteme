@@ -3,6 +3,7 @@
 #include <boost/multiprecision/cpp_int.hpp>
 #include <boost/random/uniform_int_distribution.hpp>
 #include <boost/random.hpp>
+#include <boost/lexical_cast.hpp>
 
 #include <caf/all.hpp>
 #include <caf/io/all.hpp>
@@ -30,7 +31,8 @@ struct config : actor_system_config
 	uint16_t port = 0;
 	bool server = false;
 
-	config( ) {
+	config( )
+	{
 		add_message_type<distributor::result>("d_result"),
 		add_message_type<worker::result>("w_result"),
 		opt_group{custom_options_, "global"}
@@ -55,7 +57,14 @@ void caf_main(actor_system& sys, const config& cfg)
 
 		for(std::string line ; std::getline(std::cin, line) ;)
 		{
-			if(!line.empty() && line[0] == 'q') break;
+			if(line.empty()) continue;
+
+			if(line[0] == 'q') break;
+			
+			if(line[0] == 'r')
+			{
+				manager.setPoolSize(boost::lexical_cast<int>(std::string{line.data() + 1}));
+			}
 		}
 	}
 	else
@@ -63,41 +72,56 @@ void caf_main(actor_system& sys, const config& cfg)
 		scoped_actor self{sys};
 		auto d = sys.spawn(distributor::behavior, &mm);
 
-		mm.publish(d, cfg.port);
+		auto p = mm.publish(d, cfg.port, nullptr, true);
 
-		for(std::string line ; std::getline(std::cin, line) ;)
+		// TODO "specter" && time measurement && why do workers crash?
+
+		if(!p)
 		{
-			if(line.empty()) continue;
-			if(line[0] == 'q') break;
-			
-			self->request(d, infinite, distributor::action::process::value, line).receive(
-				[&](const distributor::result& r) {
-					uint512_t cmp = 1;
+			std::cerr << "Could not publish distributor: " << sys.render(p.error()) << std::endl;
+		}
+		else
+		{
+			std::cout << "Distributor running on port " << *p << std::endl;
 
-					aout(self) << cfg.value << ": 1";
-					for(const auto& f : r.factors)
-					{
-						for(uint n = f.second ; n-- ;)
+			for(std::string line ; std::getline(std::cin, line) ;)
+			{
+				if(line.empty()) continue;
+				if(line[0] == 'q') break;
+				
+				self->request(d, infinite, distributor::action::process::value, line).receive(
+					[&](const distributor::result& r) {
+						uint512_t cmp = 1;
+
+						aout(self) << cfg.value << ": 1";
+						for(const auto& f : r.factors)
 						{
-							cmp *= uint512_t{f.first};
+							for(uint n = f.second ; n-- ;)
+							{
+								cmp *= uint512_t{f.first};
 
-							aout(self) << " * " << f.first;
+								aout(self) << " * " << f.first;
+							}
 						}
-					}
-					aout(self) << std::endl;
+						aout(self) << std::endl;
 
-					aout(self) << (cmp == uint512_t{line} ? "SUCCESS" : "FAILURE") << std::endl;
-					aout(self) << "It took " << r.cycles << " cycles." << std::endl;
-				},
-				[&](error& e) {
-					aout(self) << "some error: " << sys.render(e) << std::endl;
-				}
-			);
+						aout(self) << (cmp == uint512_t{line} ? "SUCCESS" : "FAILURE") << std::endl;
+						aout(self) << "It took " << r.cycles << " cycles." << std::endl;
+					},
+					[&](error& e) {
+						aout(self) << "some error: " << sys.render(e) << std::endl;
+					}
+				);
+
+				std::cout << "HERE" << std::endl;
+			}
+
+			mm.unpublish(d, cfg.port);
 		}
 
-		mm.unpublish(d, cfg.port);
-
 		self->send(d, distributor::action::kill::value);
+
+		aout(self) << "Goodbye." << std::endl;
 	}
 }
 

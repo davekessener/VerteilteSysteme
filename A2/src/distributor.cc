@@ -4,7 +4,17 @@
 
 #include "rho.h"
 
+#define MXT_WORKER_TIMEOUT std::chrono::seconds(15)
+#define MXT_L uint{1000}
+
+#define MXT_E_TIMEOUT 4
+
 namespace vs { namespace distributor {
+
+namespace
+{
+	typedef caf::atom_constant<caf::atom("system")> system_atom;
+}
 
 actor::behavior_type behavior(actor::stateful_pointer<state> self, caf::io::middleman *mm)
 {
@@ -51,14 +61,31 @@ actor::behavior_type behavior(actor::stateful_pointer<state> self, caf::io::midd
 				self->state.r.factors.emplace_back("2", c);
 			}
 
-			self->send(self, action::step::value, stringify(v), "");
+			self->state.open.push_front(v);
+			self->send(self, action::next::value);
 
 			caf::aout(self) << "Received request for factorization of " << n << std::endl;
 
 			return self->state.promise;
 		},
-		[=](action::step, const std::string& n, const std::string& src) {
-			if(!self->state.open.empty() && self->state.open.front() != uint512_t{src})
+		[=](action::next) {
+			if(self->state.open.empty())
+				return;
+
+			for(const auto& e : self->state.workers)
+			{
+				std::string v(stringify(self->state.open.front()));
+
+				aout(self) << "Instructing worker " << e.first << " to compute factors of " << v << std::endl;
+
+				self->send(self, action::request::value, e.first, v, self->state.a);
+				self->state.a += 2;
+			}
+		},
+		[=](action::eval, const std::string& n, const std::string& src) {
+			if(self->state.open.empty())
+				return;
+			if(self->state.open.front() != uint512_t{src})
 				return;
 
 			uint512_t v(n);
@@ -109,26 +136,39 @@ actor::behavior_type behavior(actor::stateful_pointer<state> self, caf::io::midd
 			}
 
 			self->state.open.push_front(v);
+			self->send(self, action::next::value);
+		},
+		[self](action::request, const std::string& id, const std::string& v, uint a) {
+			if(self->state.open.empty())
+				return;
 
-			for(const auto& e : self->state.workers)
+			auto& w(self->state.workers[id]);
+
+			if(w && uint512_t{v} == self->state.open.front())
 			{
-				aout(self) << "Instructing worker " << e.first << " to compute factors of " << stringify(v) << std::endl;
+				self->request(w, MXT_WORKER_TIMEOUT, worker::action::process::value, v, a, MXT_L).then(
+					[self, id](const worker::result& r) {
+						self->state.r.cycles += r.cycles;
+						self->state.r.cpu_time += r.cpu_time;
 
-				self->request(e.second, caf::infinite,
-					worker::action::process::value, stringify(v), self->state.a, 1000u)
-				.then([self, id = e.first](const worker::result& r) {
-					self->state.r.cycles += r.cycles;
-					self->state.r.cpu_time += r.cpu_time;
+						aout(self) << "Received answer from " << id << ": " << r.factor << std::endl;
 
-					aout(self) << "Received answer from " << id << ": " << r.factor << std::endl;
-
-					if(!self->state.open.empty() && r.factor != "")
-					{
-						self->send(self, action::step::value, r.factor, r.source);
+						if(r.factor != "")
+						{
+							self->send(self, action::eval::value, r.factor, r.source);
+						}
+					},
+					[self, id, v, a](caf::error e) {
+						if(e.category() == system_atom::value && e.code() == MXT_E_TIMEOUT)
+						{
+							self->send(self, action::request::value, id, v, a);
+						}
+						else
+						{
+							aout(self) << "ERR: unexpected error: " << e << std::endl;
+						}
 					}
-				});
-
-				self->state.a += 2;
+				);
 			}
 		}
 	};

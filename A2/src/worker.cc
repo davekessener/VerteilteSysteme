@@ -12,17 +12,20 @@ actor::behavior_type behavior(actor::stateful_pointer<State> self, uint id)
 		[=](action::process, const std::string& n, uint a, uint l) -> caf::result<result> {
 			uint512_t v(n);
 
+			aout(self) << "[" << id << "] Received request for " << n << std::endl;
+
 			if(v <= 1 || (v % 2) != 1)
 			{
-				aout(self) << "[" << id << "] Received invalid request: " << n << std::endl;
-
 				return result{};
+			}
+			else if(self->state.isRepeat(uint512_t{n}, a))
+			{
+				return self->state.get();
 			}
 			else
 			{
 				auto promise = self->make_response_promise<result>();
 
-				self->state.abort();
 				self->state.set(v, a, l, promise);
 
 				if(self->mailbox().empty())
@@ -61,16 +64,26 @@ void State::set(uint512_t n, uint a, uint l, caf::response_promise p)
 {
 	using boost::multiprecision::sqrt;
 
-	mRunning = true;
-	mPromise = p;
-	mTime = mCycles = mTries = 0;
-	mNumber = n;
-	mA = a;
-	mCount = MXT_O(mNumber) / l;
+	if(mRunning && n == mNumber && a == mA)
+	{
+		mPromise.deliver(result{});
+		mPromise = p;
+	}
+	else
+	{
+		abort();
 
-	mRNG.param(d_t::param_type{0, mNumber - 1});
+		mRunning = true;
+		mPromise = p;
+		mTime = mCycles = mTries = 0;
+		mNumber = n;
+		mA = a;
+		mCount = MXT_O(mNumber) / l;
 
-	reset();
+		mRNG.param(d_t::param_type{0, mNumber - 1});
+
+		reset();
+	}
 }
 
 result State::get(void) const
@@ -105,6 +118,7 @@ void State::step(void)
 	if(mFact.done())
 	{
 		mRunning = false;
+		std::cout << stringify("Finished calculating: ", mFact.get(), "\n") << std::endl;
 		mPromise.deliver(get());
 	}
 }
@@ -116,6 +130,11 @@ void State::abort(void)
 		mRunning = false;
 		mPromise.deliver(result{});
 	}
+}
+
+bool State::isRepeat(uint512_t n, uint a) const
+{
+	return n == mNumber && a == mA && mFact.done() && mFact.get() != n;
 }
 
 void State::reset(void)

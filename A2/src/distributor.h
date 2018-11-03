@@ -19,7 +19,9 @@ namespace vs
 			using reg = atom_constant<atom("d_reg")>;
 			using unreg = atom_constant<atom("d_unreg")>;
 			using process = atom_constant<atom("d_process")>;
-			using step = atom_constant<atom("d_step")>;
+			using request = atom_constant<atom("d_req")>;
+			using next = atom_constant<atom("d_next")>;
+			using eval = atom_constant<atom("d_eval")>;
 			using kill = atom_constant<atom("d_kill")>;
 		}
 	
@@ -34,7 +36,9 @@ namespace vs
 			caf::reacts_to<action::reg, std::string, uint16_t>,
 			caf::reacts_to<action::unreg, std::string, uint16_t>,
 			caf::replies_to<action::process, std::string>::with<result>,
-			caf::reacts_to<action::step, std::string, std::string>,
+			caf::reacts_to<action::request, std::string, std::string, uint>,
+			caf::reacts_to<action::next>,
+			caf::reacts_to<action::eval, std::string, std::string>,
 			caf::reacts_to<action::kill>
 		>;
 	

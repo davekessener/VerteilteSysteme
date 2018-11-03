@@ -42,12 +42,13 @@ namespace vs
 				void set(uint512_t, uint, uint, caf::response_promise);
 				void step( );
 				void abort( );
+				result get( ) const;
+				bool isRepeat(uint512_t, uint) const;
 
 				bool done( ) const { return !mRunning || mFact.done(); }
 				void add(uint t) { mTime += t; }
 
 			private:
-				result get( ) const;
 				void reset( );
 
 			private:
