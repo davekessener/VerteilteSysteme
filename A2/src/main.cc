@@ -13,6 +13,7 @@
 #include "worker.h"
 #include "distributor.h"
 #include "manager.h"
+#include "avatar.h"
 
 // # --------------------------------------------------------------------------
 
@@ -47,8 +48,6 @@ void caf_main(actor_system& sys, const config& cfg)
 {
 	std::cout << "VSP/2 - Lab 2" << std::endl;
 
-	auto& mm = sys.middleman();
-
 	if(cfg.server)
 	{
 		Manager manager(cfg.host, sys);
@@ -70,59 +69,35 @@ void caf_main(actor_system& sys, const config& cfg)
 	else
 	{
 		scoped_actor self{sys};
-		auto d = sys.spawn(distributor::behavior, &mm);
+		auto a = sys.spawn(avatar::behavior);
+		uint16_t p = 0;
 
-		auto p = mm.publish(d, cfg.port, nullptr, true);
+		self->request(a, infinite, avatar::action::create::value, cfg.port).receive(
+			[&](uint16_t port) {
+				p = port;
+			},
+			[&](const error& e) {
+				aout(self) << "ERR: " << e << std::endl;
+			}
+		);
 
-		// TODO "specter" && time measurement && why do workers crash?
-
-		if(!p)
+		if(p)
 		{
-			std::cerr << "Could not publish distributor: " << sys.render(p.error()) << std::endl;
-		}
-		else
-		{
-			std::cout << "Distributor running on port " << *p << std::endl;
+			std::cout << "Distributor running on port " << p << std::endl;
 
 			for(std::string line ; std::getline(std::cin, line) ;)
 			{
 				if(line.empty()) continue;
 				if(line[0] == 'q') break;
 				
-				self->request(d, infinite, distributor::action::process::value, line).receive(
-					[&](const distributor::result& r) {
-						uint512_t cmp = 1;
-
-						aout(self) << cfg.value << ": 1";
-						for(const auto& f : r.factors)
-						{
-							for(uint n = f.second ; n-- ;)
-							{
-								cmp *= uint512_t{f.first};
-
-								aout(self) << " * " << f.first;
-							}
-						}
-						aout(self) << std::endl;
-
-						aout(self) << (cmp == uint512_t{line} ? "SUCCESS" : "FAILURE") << std::endl;
-						aout(self) << "It took " << r.cycles << " cycles." << std::endl;
-					},
-					[&](error& e) {
-						aout(self) << "some error: " << sys.render(e) << std::endl;
-					}
-				);
-
-				std::cout << "HERE" << std::endl;
+				self->send(a, avatar::action::calculate::value, line);
 			}
-
-			mm.unpublish(d, cfg.port);
 		}
 
-		self->send(d, distributor::action::kill::value);
-
-		aout(self) << "Goodbye." << std::endl;
+		self->send(a, avatar::action::kill::value);
 	}
+
+	std::cout << "Goodbye." << std::endl;
 }
 
 CAF_MAIN(io::middleman);

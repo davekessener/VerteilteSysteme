@@ -22,7 +22,7 @@ namespace vs
 		struct result
 		{
 			std::string factor, source;
-			uint cpu_time = 0;
+			double cpu_time = 0;
 			uint cycles = 0;
 			uint tries = 0;
 		};
@@ -46,7 +46,7 @@ namespace vs
 				bool isRepeat(uint512_t, uint) const;
 
 				bool done( ) const { return !mRunning || mFact.done(); }
-				void add(uint t) { mTime += t; }
+				void update(uint64_t t) { mTime += t; }
 
 			private:
 				void reset( );
@@ -58,7 +58,8 @@ namespace vs
 				uint512_t mNumber;
 				uint mA;
 				uint512_t mCount, mLeft;
-				uint mTime, mCycles, mTries;
+				uint mCycles, mTries;
+				uint64_t mTime;
 				RhoFactorizer<uint512_t> mFact;
 				caf::response_promise mPromise;
 		};

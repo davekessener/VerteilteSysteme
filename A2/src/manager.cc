@@ -202,7 +202,7 @@ Manager::Manager(const std::string& h, caf::actor_system& sys, uint s)
 	caf::scoped_actor self{sys};
 
 	pImpl->sys = &sys;
-	pImpl->actor = sys.spawn(manager::behavior);
+	pImpl->actor = sys.spawn<caf::detached>(manager::behavior);
 
 	self->send(pImpl->actor, manager::action::init::value, h);
 	self->send(pImpl->actor, manager::action::set_size::value, s);

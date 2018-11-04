@@ -1,10 +1,18 @@
 #include <iostream>
+#include <chrono>
 
 #include "worker.h"
 
 #define MXT_O(n) ((118*sqrt(sqrt(n)))/100)
 
+#define MXT_MAILBOX_F 1000
+
 namespace vs { namespace worker {
+
+namespace
+{
+	using clock_type = std::chrono::high_resolution_clock;
+}
 
 actor::behavior_type behavior(actor::stateful_pointer<State> self, uint id)
 {
@@ -37,16 +45,21 @@ actor::behavior_type behavior(actor::stateful_pointer<State> self, uint id)
 			}
 		},
 		[=](action::resume) {
+			bool should_cont = false;
+
+			auto start = clock_type::now();
 			while(!self->state.done())
 			{
 				self->state.step();
 
-				if(!self->mailbox().empty())
-				{
-					self->send(self, action::resume::value);
+				if((should_cont = !self->mailbox().empty())) break;
+			}
 
-					break;
-				}
+			self->state.update(std::chrono::duration_cast<std::chrono::microseconds>(clock_type::now() - start).count());
+
+			if(should_cont)
+			{
+				self->send(self, action::resume::value);
 			}
 		},
 		[=](action::abort) {
@@ -90,15 +103,19 @@ result State::get(void) const
 {
 	result r;
 
-	r.factor = stringify(mFact.get());
-	r.source = stringify(mNumber);
-	r.cpu_time = mTime;
+	r.cpu_time = mTime / 1000000.0;
 	r.cycles = mCycles;
 	r.tries = mTries;
 
-	if(r.factor == r.source)
+	if(mFact.done())
 	{
-		r.factor = "";
+		r.factor = stringify(mFact.get());
+		r.source = stringify(mNumber);
+
+		if(r.factor == r.source)
+		{
+			r.factor = "";
+		}
 	}
 
 	return r;
@@ -128,7 +145,7 @@ void State::abort(void)
 	if(mRunning)
 	{
 		mRunning = false;
-		mPromise.deliver(result{});
+		mPromise.deliver(get());
 	}
 }
 

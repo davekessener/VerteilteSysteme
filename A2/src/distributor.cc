@@ -14,6 +14,12 @@ namespace vs { namespace distributor {
 namespace
 {
 	typedef caf::atom_constant<caf::atom("system")> system_atom;
+
+	template<typename T>
+	inline void incA(T& a)
+	{
+		a += 2;
+	}
 }
 
 actor::behavior_type behavior(actor::stateful_pointer<state> self, caf::io::middleman *mm)
@@ -31,6 +37,13 @@ actor::behavior_type behavior(actor::stateful_pointer<state> self, caf::io::midd
 				self->state.workers[id] = p.value();
 
 				caf::aout(self) << "Registered worker " << id << std::endl;
+
+				if(!self->state.open.empty())
+				{
+					self->send(self, action::request::value, id, stringify(self->state.open.front()), self->state.a);
+
+					incA(self->state.a);
+				}
 			}
 			else
 			{
@@ -44,9 +57,11 @@ actor::behavior_type behavior(actor::stateful_pointer<state> self, caf::io::midd
 		},
 		[=](action::process, const std::string& n) -> caf::result<result> {
 			self->state.a = 1;
+			self->state.pending = 0;
 			self->state.open.clear();
 			self->state.r = result{};
 			self->state.promise = self->make_response_promise<result>();
+			self->state.start = state::clock_type::now();
 
 			uint512_t v{n};
 
@@ -68,6 +83,12 @@ actor::behavior_type behavior(actor::stateful_pointer<state> self, caf::io::midd
 
 			return self->state.promise;
 		},
+		[=](action::reply) {
+			if(!self->state.pending)
+			{
+				self->state.promise.deliver(self->state.r);
+			}
+		},
 		[=](action::next) {
 			if(self->state.open.empty())
 				return;
@@ -79,7 +100,7 @@ actor::behavior_type behavior(actor::stateful_pointer<state> self, caf::io::midd
 				aout(self) << "Instructing worker " << e.first << " to compute factors of " << v << std::endl;
 
 				self->send(self, action::request::value, e.first, v, self->state.a);
-				self->state.a += 2;
+				incA(self->state.a);
 			}
 		},
 		[=](action::eval, const std::string& n, const std::string& src) {
@@ -94,6 +115,8 @@ actor::behavior_type behavior(actor::stateful_pointer<state> self, caf::io::midd
 			{
 				if(self->state.open.empty())
 				{
+					self->state.r.time.total = std::chrono::duration_cast<std::chrono::microseconds>(state::clock_type::now() - self->state.start).count() / 1000000.0;
+
 					for(const auto& e : self->state.workers)
 					{
 						self->send(e.second, worker::action::abort::value);
@@ -109,7 +132,7 @@ actor::behavior_type behavior(actor::stateful_pointer<state> self, caf::io::midd
 							return uint512_t{a.first} < uint512_t{b.first};
 					});
 
-					self->state.promise.deliver(self->state.r);
+					self->send(self, action::reply::value);
 
 					return;
 				}
@@ -146,19 +169,32 @@ actor::behavior_type behavior(actor::stateful_pointer<state> self, caf::io::midd
 
 			if(w && uint512_t{v} == self->state.open.front())
 			{
+				++self->state.pending;
+
 				self->request(w, MXT_WORKER_TIMEOUT, worker::action::process::value, v, a, MXT_L).then(
 					[self, id](const worker::result& r) {
+						--self->state.pending;
+
 						self->state.r.cycles += r.cycles;
-						self->state.r.cpu_time += r.cpu_time;
+						self->state.r.time.cpu += r.cpu_time;
 
 						aout(self) << "Received answer from " << id << ": " << r.factor << std::endl;
 
-						if(r.factor != "")
+						if(self->state.open.empty())
+						{
+							if(!self->state.pending)
+							{
+								self->send(self, action::reply::value);
+							}
+						}
+						else if(r.factor != "")
 						{
 							self->send(self, action::eval::value, r.factor, r.source);
 						}
 					},
 					[self, id, v, a](caf::error e) {
+						--self->state.pending;
+
 						if(e.category() == system_atom::value && e.code() == MXT_E_TIMEOUT)
 						{
 							self->send(self, action::request::value, id, v, a);
