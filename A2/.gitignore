@@ -3,4 +3,5 @@ lab2
 **/*.d
 *.log
 .*.swp
+include/
 

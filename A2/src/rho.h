@@ -2,7 +2,9 @@
 #define VS_RHO_H
 
 #include <boost/multiprecision/miller_rabin.hpp>
-#include <boost/math/common_factor.hpp>
+#include <boost/integer/common_factor.hpp>
+//#include <boost/math/common_factor.hpp>
+//#include <caf/detail/gcd.hpp>
 
 #define MXT_PRIME_TRIALS 25
 #define MXT_SMALL_NUMBER uint512_t{"10000000000"}
@@ -56,6 +58,7 @@ namespace vs
 		mX = advance(mX);
 		mY = advance(advance(mY));
 		mP = boost::math::gcd((mY - mX) % mN, mN);
+//		mP = caf::detail::gcd((mY - mX) % mN, mN);
 	}
 }
 

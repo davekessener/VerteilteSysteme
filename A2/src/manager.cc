@@ -132,7 +132,8 @@ actor::behavior_type behavior(actor::stateful_pointer<state> self)
 
 				mm.unpublish(w.w, w.port);
 
-				self->send(w.w, worker::action::kill::value);
+//				self->send(w.w, worker::action::kill::value);
+				self->send_exit(w.w, caf::exit_reason::user_shutdown);
 
 				self->state.workers.pop_back();
 			}

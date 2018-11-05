@@ -56,6 +56,10 @@ actor::behavior_type behavior(actor::stateful_pointer<state> self, caf::io::midd
 			aout(self) << "Removed worker " << id << std::endl;
 		},
 		[=](action::process, const std::string& n) -> caf::result<result> {
+//			if(!self->state.open.empty())
+//			{
+//				return caf::skip;
+//			}
 			self->state.a = 1;
 			self->state.pending = 0;
 			self->state.open.clear();

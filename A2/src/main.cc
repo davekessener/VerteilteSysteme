@@ -29,16 +29,19 @@ struct config : actor_system_config
 {
 	std::string value = "1";
 	std::string host = "localhost";
+	std::string dist = "localhost";
 	uint16_t port = 0;
 	bool server = false;
 
 	config( )
 	{
-		add_message_type<distributor::result>("d_result"),
-		add_message_type<worker::result>("w_result"),
+		add_message_type<distributor::result>("d_result");
+		add_message_type<worker::result>("w_result");
+//		add_message_type<worker::actor>("worker_actor");
 		opt_group{custom_options_, "global"}
 			.add(value, "value,V", "Value to be factorized")
 			.add(host, "host,H", "Server hostname")
+			.add(dist, "distributor,d", "Remote distributor")
 			.add(port, "port,p", "Port")
 			.add(server, "server,s", "Run server");
 	}
@@ -52,7 +55,7 @@ void caf_main(actor_system& sys, const config& cfg)
 	{
 		Manager manager(cfg.host, sys);
 
-		manager.setDistributor(cfg.host, cfg.port);
+		manager.setDistributor(cfg.dist, cfg.port);
 
 		for(std::string line ; std::getline(std::cin, line) ;)
 		{

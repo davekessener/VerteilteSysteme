@@ -10,8 +10,18 @@ LD=$(CC)
 #INCLUDES += -I /path/to/include
 #LIBS += -L /path/to/libs
 
-INCLUDES += -I $(SRC_DIR)
+VS_DIR=/home/networker/Desktop/VS
+CAF_DIR=$(VS_DIR)/actor-framework
 
+INCLUDES += -I $(SRC_DIR)
+#INCLUDES += -I $(VS_DIR)/vslab-caf/third_party/
+INCLUDES += -I include/
+INCLUDES += -I $(CAF_DIR)/build/libcaf_core/
+INCLUDES += -I $(CAF_DIR)/libcaf_core/
+INCLUDES += -I $(CAF_DIR)/build/libcaf_io/
+INCLUDES += -I $(CAF_DIR)/libcaf_io/
+
+LIBS += -L $(CAF_DIR)/build/lib/
 LIBS += -lcaf_core -lcaf_io
 
 CFLAGS_release += -O3
