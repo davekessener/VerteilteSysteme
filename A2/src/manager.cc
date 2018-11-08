@@ -22,7 +22,6 @@ struct meta_worker
 
 struct state
 {
-	std::string host;
 	std::vector<meta_worker> workers;
 	caf::io::middleman *mm = nullptr;
 	uint size = 0;
@@ -40,57 +39,49 @@ namespace action
 	using caf::atom;
 	using caf::atom_constant;
 
-	using init = atom_constant<atom("m_init")>;
 	using set_size = atom_constant<atom("m_size")>;
 	using set_dis = atom_constant<atom("m_dis")>;
 	using reconnect = atom_constant<atom("m_recon")>;
 	using shutdown = atom_constant<atom("m_shutdown")>;
-	using kill = atom_constant<atom("m_kill")>;
 }
 
 using actor = caf::typed_actor<
-	caf::reacts_to<action::init, std::string>,
 	caf::reacts_to<action::set_size, uint>,
 	caf::reacts_to<action::set_dis, std::string, uint16_t>,
 	caf::reacts_to<action::reconnect>,
-	caf::reacts_to<action::shutdown>,
-	caf::reacts_to<action::kill>
+	caf::reacts_to<action::shutdown>
 >;
 	
 actor::behavior_type behavior(actor::stateful_pointer<state> self)
 {
+	self->state.mm = &self->system().middleman();
+	self->set_down_handler([self](caf::down_msg& msg) {
+		if(self->state.dis.handle && msg.source == self->state.dis.handle.address())
+		{
+			aout(self) << "Distributor " << self->state.dis.host << ":" << self->state.dis.port << " terminated!" << std::endl;
+
+			self->state.dis.handle = nullptr;
+			self->send(self, action::set_dis::value, self->state.dis.host, self->state.dis.port);
+		}
+		else
+		{
+			auto i = std::find_if(self->state.workers.begin(), self->state.workers.end(),
+				[a = msg.source](const meta_worker& w) { return w.w.address() == a; });
+
+			if(i != self->state.workers.end())
+			{
+				self->state.workers.erase(i);
+				self->send(self, action::set_size::value, self->state.size);
+			}
+		}
+	});
+
 	return {
-		[self](action::init, const std::string& h) {
-			self->state.host = h;
-			self->state.mm = &self->system().middleman();
-
-			self->set_down_handler([self](caf::down_msg& msg) {
-				if(self->state.dis.handle && msg.source == self->state.dis.handle.address())
-				{
-					aout(self) << "Distributor " << self->state.dis.host << ":" << self->state.dis.port << " terminated!" << std::endl;
-
-					self->state.dis.handle = nullptr;
-					self->send(self, action::set_dis::value, self->state.dis.host, self->state.dis.port);
-				}
-				else for(const auto& w : self->state.workers)
-				{
-					if(msg.source == w.w.address())
-					{
-						aout(self) << "Worker " << w.id << " terminated!" << std::endl;
-					}
-				}
-			});
-
-			aout(self) << "Manager started" << std::endl;
-		},
 		[self](action::shutdown) {
 			aout(self) << "Shutting manager down" << std::endl;
 
 			self->send(self, action::set_size::value, uint{0});
-			self->send(self, action::kill::value);
-		},
-		[self](action::kill) {
-			self->quit();
+			self->send_exit(self, caf::exit_reason::user_shutdown);
 		},
 		[self](action::set_size, uint s) {
 			aout(self) << "Manager-pool resized to " << s << std::endl;
@@ -119,7 +110,17 @@ actor::behavior_type behavior(actor::stateful_pointer<state> self)
 
 					if(self->state.dis.handle)
 					{
-						self->send(self->state.dis.handle, distributor::action::reg::value, self->state.host, *p);
+						auto w = self->system().middleman().remote_actor<worker::actor>("localhost", *p);
+
+						if(w)
+						{
+							self->send(self->state.dis.handle, distributor::action::reg::value, w.value());
+						}
+						else
+						{
+							aout(self) << "ERR: unexpected failure to connect to worker " << *p << std::endl;
+							aout(self) << self->system().render(w.error()) << std::endl;
+						}
 					}
 				}
 			}
@@ -132,7 +133,6 @@ actor::behavior_type behavior(actor::stateful_pointer<state> self)
 
 				mm.unpublish(w.w, w.port);
 
-//				self->send(w.w, worker::action::kill::value);
 				self->send_exit(w.w, caf::exit_reason::user_shutdown);
 
 				self->state.workers.pop_back();
@@ -146,12 +146,6 @@ actor::behavior_type behavior(actor::stateful_pointer<state> self)
 				aout(self) << "Unregistering with " << self->state.dis.host << ":" << self->state.dis.port << std::endl;
 
 				self->demonitor(self->state.dis.handle.address());
-
-				for(const auto& w : self->state.workers)
-				{
-					self->send(self->state.dis.handle, distributor::action::unreg::value, self->state.host, w.port);
-				}
-
 				self->state.dis.handle = nullptr;
 			}
 
@@ -166,7 +160,7 @@ actor::behavior_type behavior(actor::stateful_pointer<state> self)
 
 				for(const auto& w : self->state.workers)
 				{
-					self->send(self->state.dis.handle, distributor::action::reg::value, self->state.host, w.port);
+					self->send(self->state.dis.handle, distributor::action::reg::value, w.w);
 				}
 
 				self->monitor(self->state.dis.handle);
@@ -197,7 +191,7 @@ struct Manager::Impl
 	manager::actor actor;
 };
 
-Manager::Manager(const std::string& h, caf::actor_system& sys, uint s)
+Manager::Manager(caf::actor_system& sys, uint s)
 	: pImpl(new Impl)
 {
 	caf::scoped_actor self{sys};
@@ -205,7 +199,6 @@ Manager::Manager(const std::string& h, caf::actor_system& sys, uint s)
 	pImpl->sys = &sys;
 	pImpl->actor = sys.spawn<caf::detached>(manager::behavior);
 
-	self->send(pImpl->actor, manager::action::init::value, h);
 	self->send(pImpl->actor, manager::action::set_size::value, s);
 }
 

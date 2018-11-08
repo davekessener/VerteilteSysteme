@@ -18,13 +18,12 @@ namespace vs
 			using caf::atom_constant;
 	
 			using reg = atom_constant<atom("d_reg")>;
-			using unreg = atom_constant<atom("d_unreg")>;
 			using process = atom_constant<atom("d_process")>;
+			using start = atom_constant<atom("d_start")>;
 			using reply = atom_constant<atom("d_reply")>;
 			using request = atom_constant<atom("d_req")>;
 			using next = atom_constant<atom("d_next")>;
 			using eval = atom_constant<atom("d_eval")>;
-			using kill = atom_constant<atom("d_kill")>;
 		}
 	
 		struct result
@@ -39,14 +38,14 @@ namespace vs
 		};
 		
 		using actor = caf::typed_actor<
-			caf::reacts_to<action::reg, std::string, uint16_t>,
-			caf::reacts_to<action::unreg, std::string, uint16_t>,
+			caf::reacts_to<action::reg, worker::actor>,
 			caf::replies_to<action::process, std::string>::with<result>,
+			caf::reacts_to<action::start>,
 			caf::reacts_to<action::reply>,
-			caf::reacts_to<action::request, std::string, std::string, uint>,
+			caf::reacts_to<action::request, worker::actor, std::string, uint>,
 			caf::reacts_to<action::next>,
 			caf::reacts_to<action::eval, std::string, std::string>,
-			caf::reacts_to<action::kill>
+			caf::reacts_to<worker::result>
 		>;
 	
 		struct state
@@ -55,14 +54,15 @@ namespace vs
 
 			uint a = 1;
 			uint pending = 0;
-			std::map<std::string, worker::actor> workers;
-			std::deque<uint512_t> open;
+			std::vector<worker::actor> workers;
+			std::vector<uint512_t> open;
 			result r;
 			caf::response_promise promise;
 			clock_type::time_point start;
+			std::deque<std::pair<std::string, caf::response_promise>> backlog;
 		};
 
-		actor::behavior_type behavior(actor::stateful_pointer<state>, caf::io::middleman *);
+		actor::behavior_type behavior(actor::stateful_pointer<state>);
 		
 		template<typename Inspector>
 		typename Inspector::result_type inspect(Inspector& f, result& v)
