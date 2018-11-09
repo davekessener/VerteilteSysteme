@@ -113,6 +113,8 @@ actor::behavior_type behavior(actor::stateful_pointer<state> self)
 			if(self->state.open.empty())
 				return;
 
+			aout(self) << "Processing entry " << stringify(self->state.open.back()) << std::endl;
+
 			for(auto& w : self->state.workers)
 			{
 				std::string v(stringify(self->state.open.back()));
@@ -127,6 +129,8 @@ actor::behavior_type behavior(actor::stateful_pointer<state> self)
 				return;
 
 			uint512_t v(n);
+
+			aout(self) << "Received " << n << " from worker" << std::endl;
 
 			while(isPrime(v) || v == 1)
 			{
@@ -162,9 +166,9 @@ actor::behavior_type behavior(actor::stateful_pointer<state> self)
 				{
 					uint c = 0;
 
-					for(auto& o : self->state.open)
+					for(auto i1 = self->state.open.rbegin(), i2 = self->state.open.rend() ; i1 != i2 ; ++i1)
 					{
-						c = divideAll(o, v);
+						c = divideAll(*i1, v);
 					}
 
 					aout(self) << "Found prime " << stringify(v) << "^" << c << std::endl;

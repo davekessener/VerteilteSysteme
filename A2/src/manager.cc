@@ -9,13 +9,12 @@ namespace manager {
 struct meta_worker
 {
 	worker::actor w;
-	uint16_t port;
 	uint id;
 
 	meta_worker( ) { }
 	meta_worker(const meta_worker&) = default;
-	meta_worker(const worker::actor& w, uint16_t p, uint id)
-		: w(w), port(p), id(id)
+	meta_worker(const worker::actor& w, uint id)
+		: w(w), id(id)
 	{ }
 	meta_worker& operator=(const meta_worker&) = default;
 };
@@ -23,7 +22,6 @@ struct meta_worker
 struct state
 {
 	std::vector<meta_worker> workers;
-	caf::io::middleman *mm = nullptr;
 	uint size = 0;
 	uint nextID = 0;
 	struct
@@ -54,7 +52,6 @@ using actor = caf::typed_actor<
 	
 actor::behavior_type behavior(actor::stateful_pointer<state> self)
 {
-	self->state.mm = &self->system().middleman();
 	self->set_down_handler([self](caf::down_msg& msg) {
 		if(self->state.dis.handle && msg.source == self->state.dis.handle.address())
 		{
@@ -88,40 +85,17 @@ actor::behavior_type behavior(actor::stateful_pointer<state> self)
 
 			self->state.size = s;
 
-			caf::actor_system& sys(self->system());
-			caf::io::middleman& mm(*self->state.mm);
-
 			while(self->state.workers.size() < s)
 			{
 				uint id = self->state.nextID++;
-				auto w = sys.spawn(worker::behavior, id);
-				auto p = mm.publish(w, 0);
+				auto w = self->system().spawn(worker::behavior, id);
 
-				if(!p)
+				self->state.workers.emplace_back(w, id);
+				self->monitor(w);
+
+				if(self->state.dis.handle)
 				{
-					aout(self) << "ERR: Failed to publish worker: " << sys.render(p.error()) << std::endl;
-				}
-				else
-				{
-					aout(self) << "Worker " << id << " running on port " << *p << std::endl;
-
-					self->state.workers.emplace_back(w, *p, id);
-					self->monitor(w);
-
-					if(self->state.dis.handle)
-					{
-						auto w = self->system().middleman().remote_actor<worker::actor>("localhost", *p);
-
-						if(w)
-						{
-							self->send(self->state.dis.handle, distributor::action::reg::value, w.value());
-						}
-						else
-						{
-							aout(self) << "ERR: unexpected failure to connect to worker " << *p << std::endl;
-							aout(self) << self->system().render(w.error()) << std::endl;
-						}
-					}
+					self->send(self->state.dis.handle, distributor::action::reg::value, w);
 				}
 			}
 
@@ -130,8 +104,6 @@ actor::behavior_type behavior(actor::stateful_pointer<state> self)
 				auto& w(self->state.workers.back());
 
 				aout(self) << "Shutting down worker " << w.id << std::endl;
-
-				mm.unpublish(w.w, w.port);
 
 				self->send_exit(w.w, caf::exit_reason::user_shutdown);
 
@@ -189,9 +161,10 @@ struct Manager::Impl
 {
 	caf::actor_system *sys;
 	manager::actor actor;
+	uint port;
 };
 
-Manager::Manager(caf::actor_system& sys, uint s)
+Manager::Manager(caf::actor_system& sys, uint p, uint s)
 	: pImpl(new Impl)
 {
 	caf::scoped_actor self{sys};
@@ -200,11 +173,28 @@ Manager::Manager(caf::actor_system& sys, uint s)
 	pImpl->actor = sys.spawn<caf::detached>(manager::behavior);
 
 	self->send(pImpl->actor, manager::action::set_size::value, s);
+
+	auto pp = sys.middleman().publish(pImpl->actor, p);
+
+	if(pp)
+	{
+		pImpl->port = *pp;
+
+		aout(self) << "Published manager on port " << *pp << std::endl;
+	}
+	else
+	{
+		aout(self) << "ERR: Failed to publish manager: " << sys.render(pp.error()) << std::endl;
+
+		throw stringify(sys.render(pp.error()));
+	}
 }
 
 Manager::~Manager(void)
 {
 	caf::scoped_actor self{*pImpl->sys};
+
+	pImpl->sys->middleman().unpublish(pImpl->actor, pImpl->port);
 
 	self->send(pImpl->actor, manager::action::shutdown::value);
 

@@ -70,7 +70,7 @@ void caf_main(actor_system& sys, const config& cfg)
 	}
 	else if(cfg.worker)
 	{
-		Manager manager(sys, cfg.count);
+		Manager manager(sys, 0, cfg.count);
 
 		manager.setDistributor(cfg.host, cfg.port);
 
