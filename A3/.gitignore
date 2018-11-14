@@ -1,0 +1,5 @@
+lab3
+build/
+resources/*
+!resources/*.zip
+
