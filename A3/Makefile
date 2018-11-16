@@ -13,6 +13,8 @@ LD=$(CC)
 INCLUDES += -I $(SRC_DIR)
 #INCLUDES += -I include/
 
+LIBS += -lpthread
+
 CFLAGS_release += -O3
 CFLAGS_debug += -ggdb -O0
 CFLAGS_all += -Wall
