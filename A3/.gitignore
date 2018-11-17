@@ -2,4 +2,5 @@ lab3
 build/
 resources/*
 !resources/*.zip
+log_*.txt
 
