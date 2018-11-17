@@ -1,9 +1,11 @@
 #include <iostream>
+#include <atomic>
 
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#include <ifaddrs.h>
 #include <unistd.h>
 #include <string.h>
 
@@ -12,11 +14,26 @@
 #include "posix_error.h"
 
 #define MXT_BUFSIZE (64*1024)
-#define MXT_TTL 1
+#define MXT_TTL 5
 #define MXT_TIMEOUT {0,250000}
 #define MXT_INVALID_ADDR ((in_addr_t)-1)
 
 namespace vs {
+
+namespace
+{
+	class Guard
+	{
+		typedef std::atomic<int> guard_t;
+
+		public:
+			Guard(guard_t& c) : mCounter(c) { ++mCounter; }
+			~Guard( ) { --mCounter; }
+
+		private:
+			guard_t& mCounter;
+	};
+}
 
 struct Socket::Impl
 {
@@ -27,11 +44,21 @@ struct Socket::Impl
 		std::string host = "";
 		uint16_t port = 0;
 	} last;
+	std::atomic<int> active;
 };
 
-Socket::Socket(uint16_t port)
+Socket::Socket(const std::string& address, uint16_t port)
 	: self(new Impl)
 {
+	std::string host = "0.0.0.0";
+
+	self->active = 0;
+
+	if(address != "")
+	{
+		host = address;
+	}
+
 	auto& sock(self->sock);
 	auto& addr(self->addr);
 
@@ -48,21 +75,41 @@ Socket::Socket(uint16_t port)
 	if(setsockopt(sock, IPPROTO_IP, IP_TTL, &ttl, sizeof(ttl)))
 		THROW<PosixError>("Could not set TTL to 1");
 
+	int loop = 1;
+	if(setsockopt(sock, IPPROTO_IP, IP_MULTICAST_LOOP, &loop, sizeof(loop)))
+		THROW<PosixError>("Could not create loopback");
+	
+	auto a = inet_addr(host.data());
+
+	if(a == MXT_INVALID_ADDR)
+		THROW<PosixError>("Could not resolve host ", host);
+
 	memset(&addr, 0, sizeof(addr));
 
 	addr.sin_family = AF_INET;
-	addr.sin_addr.s_addr = htonl(INADDR_ANY);
+	addr.sin_addr.s_addr = a;
 	addr.sin_port = htons(port);
 
 	if(bind(sock, (sockaddr *) &addr, sizeof(addr)))
-		THROW<PosixError>("Could not bind to 0.0.0.0:", port);
+		THROW<PosixError>("Could not bind to ", host, ":", port);
+	
+	std::cerr << stringify("Socket bound to [", host, "]:", port, "\n") << std::flush;
 }
 
 Socket::~Socket(void)
 {
 	if(self->sock)
 	{
-		if(::close(self->sock))
+		int fd = 0;
+
+		std::swap(fd, self->sock);
+
+		while(self->active.load())
+		{
+			sleep(10);
+		}
+
+		if(::close(fd))
 		{
 			std::cerr << "Failed to close socket!" << std::endl;
 		}
@@ -71,27 +118,74 @@ Socket::~Socket(void)
 	}
 }
 
-void Socket::join(const std::string& host)
+void Socket::join(const std::string& group, const std::string& iface)
 {
 	if(!self->sock)
 		THROW<InvalidStateError>("Socket closed!");
 
 	ip_mreq mreq;
 
-	auto mca = inet_addr(host.data());
+	auto mca = inet_addr(group.data());
 
 	if(mca == MXT_INVALID_ADDR)
-		THROW<PosixError>("Could not resolve host ", host);
+		THROW<PosixError>("Could not resolve host ", group);
+
+	memset(&mreq, 0, sizeof(mreq));
 
 	mreq.imr_multiaddr.s_addr = mca;
 	mreq.imr_interface.s_addr = htonl(INADDR_ANY);
 
+	if(iface != "")
+	{
+		std::string host = Socket::getAddressOf(iface);
+		auto a = inet_addr(host.data());
+
+		if(a == MXT_INVALID_ADDR)
+			THROW<PosixError>("Could not resolve host ", host);
+
+		mreq.imr_interface.s_addr = a;
+
+		if(setsockopt(self->sock, IPPROTO_IP, IP_MULTICAST_IF, &mreq.imr_interface, sizeof(in_addr)))
+			THROW<PosixError>("Could not join interface ", iface, " (", host, ")");
+	}
+
 	if(setsockopt(self->sock, IPPROTO_IP, IP_ADD_MEMBERSHIP, &mreq, sizeof(mreq)))
-		THROW<PosixError>("Could not join ", host);
+		THROW<PosixError>("Could not join ", group);
+}
+
+std::string Socket::getAddressOf(const std::string& iface)
+{
+	std::string host;
+	ifaddrs *ifs = nullptr;
+
+	if(getifaddrs(&ifs))
+		THROW<PosixError>("Could not look up network interfaces");
+
+	ifaddrs *ifa = ifs;
+	for(; ifa ; ifa = ifa->ifa_next)
+	{
+		if(iface == ifa->ifa_name && ifa->ifa_addr->sa_family == AF_INET)
+		{
+			sockaddr_in *a = (sockaddr_in *) ifa->ifa_addr;
+
+			host = inet_ntoa(a->sin_addr);
+
+			break;
+		}
+	}
+
+	freeifaddrs(ifs);
+
+	if(!ifa)
+		THROW<InvalidArgumentError>("Could not find a network interface named ", iface);
+	
+	return host;
 }
 
 void Socket::listen(callback_fn f) const
 {
+	Guard _(self->active);
+
 	if(!self->sock)
 		THROW<InvalidStateError>("Reading from closed socket!");
 
@@ -116,6 +210,8 @@ void Socket::listen(callback_fn f) const
 
 Socket::buffer_t Socket::receive(void) const
 {
+	Guard _(self->active);
+
 	auto& sock(self->sock);
 	auto& addr(self->addr);
 	socklen_t alen = sizeof(addr);

@@ -3,6 +3,7 @@
 
 #include <chrono>
 #include <thread>
+#include <functional>
 #include <iomanip>
 #include <sstream>
 #include <cstdint>
@@ -73,6 +74,27 @@ namespace vs
 	std::string hex(const T& v)
 	{
 		return stringify(std::hex, std::setfill('0'), std::setw(N / 4), static_cast<uint64_t>(v));
+	}
+
+	class ScopeHook
+	{
+		public:
+		typedef std::function<void(void)> callback_fn;
+
+		public:
+			ScopeHook( ) { }
+			ScopeHook(callback_fn f) : mCallback(std::move(f)) { }
+			~ScopeHook( ) { if(static_cast<bool>(mCallback)) mCallback(); }
+			ScopeHook& operator=(callback_fn f) { mCallback = std::move(f); return *this; }
+
+		private:
+			callback_fn mCallback;
+	};
+
+	template<typename F>
+	ScopeHook scoped(F&& f)
+	{
+		return ScopeHook{std::forward<F>(f)};
 	}
 }
 

@@ -6,7 +6,12 @@
 namespace vs {
 
 PosixError::PosixError(const std::string& msg)
-	: mMessage(stringify(msg, ((!msg.empty() || errno) ? ": " : ""), ((errno) ? strerror(errno) : "")))
+	: mMessage(stringify(
+		msg, 
+		((!msg.empty() || errno) ? ": " : ""),
+		((errno) ? strerror(errno) : ""),
+		" (PosixError)"
+	))
 {
 }
 

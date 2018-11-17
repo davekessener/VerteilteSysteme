@@ -37,14 +37,14 @@ stationClass=$6
 UTCoffsetMs=$7
 
 ########################################################################################################
-# TODO: Enter your team number here
+# : Enter your team number here
 #
 # Example: teamNo="2"
 ########################################################################################################
 teamNo="16"
 
 ########################################################################################################
-# TODO: Enter data source programme with full path, but WITHOUT parameters 
+# : Enter data source programme with full path, but WITHOUT parameters 
 #
 # Example:    dataSource="~/somewhere/DataSource"
 #         or  dataSource="java -cp . datasource.DataSource"
@@ -52,12 +52,12 @@ teamNo="16"
 dataSource="./source"
 
 ########################################################################################################
-# TODO: Enter your station's start command.
+# : Enter your station's start command.
 #       N.B.: You MUST use the variables above as parameters!
 #
 # Example: stationCmd="java aufgabe4.MyStation $interfaceName $mcastAddress $receivePort $stationClass"
 ########################################################################################################
-stationCmd="./lab3 $interfaceName $mcastAddress $receivePort $stationClass"
+stationCmd="./lab3 $interfaceName $mcastAddress $receivePort client $stationClass $UTCoffsetMs -q"
 
 
 printUsage() {
@@ -79,7 +79,9 @@ then
 				for i in `seq $firstIndex $lastIndex`
 				do
 					# Launching data source and station.
-					$dataSource $teamNo $i | $stationCmd &
+					$dataSource $teamNo $i | $stationCmd > log_$i.txt 2>&1 &
+
+					sleep 1
 					#
 					# If your are annoyed by all the output, try this instead:
 					#  $dataSource $teamNo $i | $stationCmd > /dev/null 2>&1 &

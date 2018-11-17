@@ -25,6 +25,8 @@ namespace vs
 			void start(const std::string&, uint16_t);
 			void stop( );
 
+			static void run(const std::string&, uint16_t);
+
 		private:
 			callback_fn mCallback;
 			std::thread mThread;
