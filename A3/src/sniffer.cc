@@ -2,18 +2,10 @@
 
 #include "sniffer.h"
 
+#include "clock.h"
 #include "socket.h"
 
 namespace vs {
-
-namespace
-{
-	template<typename T>
-	constexpr T difference(const T& a, const T& b)
-	{
-		return a > b ? (a - b) : (b - a);
-	}
-}
 
 void Sniffer::start(const std::string& group, uint16_t port)
 {
@@ -38,16 +30,18 @@ void Sniffer::stop(void)
 
 void Sniffer::run(const std::string& group, uint16_t port)
 {
+	typedef Clock<> clock_t;
+
 	const uint delta = SLOT_DURATION / 3;
 
 	uint64_t last_frame = 0;
 	uint last_slot = SLOTS_PER_FRAME;
 
 	Sniffer snif([&](const packet_t& msg) {
-		uint64_t t = now();
+		uint64_t t = clock_t::now();
 		uint64_t frame = (t + FRAME_DURATION - 1) / FRAME_DURATION;
 		uint slot = (t % FRAME_DURATION) / SLOT_DURATION;
-		std::string teamname(&msg.name[0], &msg.name[sizeof(msg.name)]);
+		std::string teamname(&msg.payload[0], &msg.payload[NAME_LENGTH]);
 		int next_slot = msg.next_slot - SLOT_IDX_OFFSET;
 		uint offset = ((t % FRAME_DURATION) % SLOT_DURATION);
 

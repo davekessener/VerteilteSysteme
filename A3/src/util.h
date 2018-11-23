@@ -26,15 +26,12 @@ typedef uint8_t byte_t;
 #define FRAME_DURATION 1000
 #define SLOT_DURATION (FRAME_DURATION/SLOTS_PER_FRAME)
 
+#define PACKET_SIZE 34
+#define NAME_LENGTH 10
+#define PAYLOAD_SIZE 24
+
 namespace vs
 {
-	typedef std::chrono::high_resolution_clock clock_t;
-	
-	inline uint64_t now( ) { return std::chrono::duration_cast<std::chrono::milliseconds>(clock_t::now().time_since_epoch()).count(); }
-	inline void sleep(int p) { if(p > 0) std::this_thread::sleep_for(std::chrono::microseconds(p * 1000 - 500)); }
-	inline void sleep_until(uint64_t t) { uint64_t n = now(); if(t > n) sleep(t - n); }
-	inline void sync(uint n) { sleep((n - now() % n) % n); }
-
 	template<typename T1, typename T2>
 	T1 lexical_cast(const T2& o)
 	{
@@ -95,6 +92,24 @@ namespace vs
 	ScopeHook scoped(F&& f)
 	{
 		return ScopeHook{std::forward<F>(f)};
+	}
+
+	template<typename T>
+	class Averager
+	{
+		public:
+			Averager( ) : mSum(0), mCount(0) { }
+			T get( ) { T v = 0; if(mCount) { v = mSum / mCount; mSum = mCount = 0; } return v; }
+			void add(T v) { mSum += v; ++mCount; }
+		private:
+			T mSum;
+			uint mCount;
+	};
+
+	template<typename T>
+	constexpr T difference(const T& a, const T& b)
+	{
+		return a > b ? (a - b) : (b - a);
 	}
 }
 
