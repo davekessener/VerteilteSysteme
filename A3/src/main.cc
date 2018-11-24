@@ -39,7 +39,7 @@ int main(int argc, char *argv[]) try
 	}
 	else
 	{
-		Station::run(group, port, iface, type);
+		runStation(group, port, iface, type);
 	}
 
 	return 0;

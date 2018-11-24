@@ -81,7 +81,7 @@ then
 					# Launching data source and station.
 					$dataSource $teamNo $i | $stationCmd > log_$i.txt 2>&1 &
 
-					sleep 1
+#					sleep 1
 					#
 					# If your are annoyed by all the output, try this instead:
 					#  $dataSource $teamNo $i | $stationCmd > /dev/null 2>&1 &

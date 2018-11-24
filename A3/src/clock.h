@@ -1,6 +1,8 @@
 #ifndef VS_CLOCK_H
 #define VS_CLOCK_H
 
+#include <chrono>
+
 #include "util.h"
 
 namespace vs

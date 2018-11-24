@@ -9,21 +9,7 @@
 
 namespace vs
 {
-	class Station
-	{
-		typedef Clock<> clock_t;
-
-		public:
-			static void run(const std::string&, uint16_t, const std::string&, char);
-
-		private:
-			Station(const std::string&, uint16_t);
-			~Station( );
-
-		private:
-			Thread mReader, mListener;
-			Socket mSender, mReceiver;
-	};
+	void runStation(const std::string&, uint16_t, const std::string&, char);
 }
 
 #endif

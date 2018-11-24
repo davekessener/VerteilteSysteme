@@ -9,132 +9,193 @@
 
 namespace vs {
 
-void Station::run(const std::string& group, uint16_t port, const std::string& iface, char type)
+namespace
 {
-	typedef Collideable<std::pair<uint64_t, packet_t>> receiver_t;
-	typedef SlotFinder<SLOTS_PER_FRAME> finder_t;
-
-	Station self(iface, port);
-	Schedule<SLOTS_PER_FRAME> schedule;
-	finder_t find_slot;
-	Averager<int64_t> timer;
-	Monitor<payload_t> payload;
-	Monitor<receiver_t> received;
-	packet_t my_packet;
-
-	try
+	class Station
 	{
-		my_packet.type = type;
+		typedef Clock<> clock_t;
+		typedef Collideable<std::pair<uint64_t, packet_t>> receiver_t;
+		typedef SlotFinder<SLOTS_PER_FRAME> finder_t;
 
-		self.mSender.join(group, iface);
-		self.mReceiver.join(group);
+		public:
+			Station(const std::string&, uint16_t, const std::string&, char);
+			~Station( );
+			void run( );
 
-		self.mReader = [&](void) {
-			payload_t buf;
+		private:
+			void receive( );
+			void listen( );
+			void step(uint64_t, int);
+			void send(uint64_t);
+			void prepare(uint64_t);
 
-			while(true)
-			{
-				for(uint i = 0 ; i < sizeof(buf) ; ++i)
-				{
-					buf[i] = std::cin.get();
-				}
-
-				payload.set(buf);
-			}
-		};
-
-		self.mListener = [&](void) {
-			self.mReceiver.listen([&](const Socket::buffer_t& msg) {
-				const packet_t& packet(*reinterpret_cast<const packet_t *>(&msg[0]));
-
-				received.set(std::make_pair(clock_t::now(), packet));
-			});
-		};
-
-		clock_t::sync(FRAME_DURATION);
-
-		int my_slot = -1;
-
-		for(uint64_t frame = (clock_t::now() + FRAME_DURATION / 2) / FRAME_DURATION ; true ; ++frame)
-		{
-			uint64_t frame_start = frame * FRAME_DURATION;
-
-			for(int slot = 0 ; slot < SLOTS_PER_FRAME ; ++slot)
-			{
-				uint64_t slot_start = frame_start + slot * SLOT_DURATION;
-
-				clock_t::sleep_until(slot_start);
-
-				received.access([&](receiver_t& o) {
-					if(o.isPresent() && !o.hasCollided())
-					{
-						auto p(static_cast<receiver_t::value_type>(o));
-						uint64_t t = p.first;
-						packet_t& packet(p.second);
-
-						if(packet.type == 'A')
-						{
-							timer.add(t - packet.timestamp);
-						}
-
-						if(packet.timestamp / FRAME_DURATION == frame)
-						{
-							schedule.set(packet.next_slot - SLOT_IDX_OFFSET);
-						}
-					}
-					else
-					{
-						o.clear();
-					}
-				});
-
-				if(slot == my_slot) try
-				{
-					my_packet.payload = payload.get();
-					my_packet.next_slot = find_slot(schedule) + SLOT_IDX_OFFSET;
-					my_packet.timestamp = slot_start + SLOT_DURATION / 2;
-
-					clock_t::sleep_until(my_packet.timestamp);
-
-					if(difference(clock_t::now(), my_packet.timestamp) < SLOT_DURATION / 4)
-					{
-						self.mSender.send(group, port, &my_packet, sizeof(my_packet));
-					}
-				}
-				catch(const finder_t::NoEmptySlotError& e)
-				{
-					my_slot = -1;
-				}
-
-				if(slot == 0)
-				{
-					schedule.clear();
-				}
-  			}
-
-			my_slot = (my_slot == -1) ? find_slot(schedule) : (my_packet.next_slot - SLOT_IDX_OFFSET);
-
-			clock_t::adjust(-timer.get() / 2);
-
-			clock_t::sleep_until(frame_start + FRAME_DURATION);
-		}
-	}
-	catch(const std::exception& e)
-	{
-		std::cerr << e.what() << std::endl;
-
-		throw;
-	}
+		private:
+			const std::string mGroup, mIface;
+			const uint16_t mPort;
+			Thread mListen, mReceive;
+			Socket mSender, mReceiver;
+			Schedule<SLOTS_PER_FRAME> mSchedule;
+			finder_t mFindSlot;
+			Averager<int64_t> mTimer;
+			Monitor<payload_t> mPayload;
+			Monitor<receiver_t> mReceived;
+			packet_t mPacket;
+			int mSlot;
+	};
 }
 
-Station::Station(const std::string& iface, uint16_t port)
-	: mSender(Socket::getAddressOf(iface))
-	, mReceiver(port)
+// # ==============================================================================================
+
+void runStation(const std::string& group, uint16_t port, const std::string& iface, char type)
 {
+	Station station(group, port, iface, type);
+
+	station.run();
+}
+
+// # ----------------------------------------------------------------------------------------------
+
+Station::Station(const std::string& group, uint16_t port, const std::string& iface, char type)
+	: mGroup(group)
+	, mIface(iface)
+	, mPort(port)
+	, mSender(Socket::getAddressOf(iface))
+	, mReceiver(port)
+	, mSlot(-1)
+{
+	std::memset(&mPacket, 0, sizeof(mPacket));
+	mPacket.type = type;
 }
 
 Station::~Station(void)
 {
+	mReceive.detach();
+}
+
+void Station::run(void)
+{
+	mSender.join(mGroup, mIface);
+	mReceiver.join(mGroup);
+
+	receive();
+	listen();
+
+	clock_t::sync(FRAME_DURATION);
+
+	mSlot = -1;
+
+	for(uint64_t frame = (clock_t::now() + FRAME_DURATION / 2) / FRAME_DURATION ; true ; ++frame)
+	{
+		uint64_t frame_start = frame * FRAME_DURATION;
+
+		mSchedule.clear();
+
+		for(int slot = 0 ; slot < SLOTS_PER_FRAME ; ++slot)
+		{
+			uint64_t slot_start = frame_start + slot * SLOT_DURATION;
+			uint64_t slot_end = slot_start + SLOT_DURATION;
+
+			if(slot == mSlot)
+			{
+				send((slot_start + slot_end) / 2);
+			}
+
+			clock_t::sleep_until(slot_end);
+
+			step(frame, slot);
+		}
+
+		mSlot = (mSlot == -1) ? mFindSlot(mSchedule) : (mPacket.next_slot - SLOT_IDX_OFFSET);
+
+		int64_t a = -mTimer.get() / 2;
+		if(a != 0)
+		{
+			std::cerr << stringify("adjusting ", a, "\n") << std::flush;
+		}
+		clock_t::adjust(a);
+	}
+}
+
+void Station::receive(void)
+{
+	mReceive = [this](void) {
+		payload_t buffer;
+
+		while(true)
+		{
+			for(uint i = 0 ; i < sizeof(buffer) ; ++i)
+			{
+				buffer[i] = std::cin.get();
+			}
+
+			mPayload.set(buffer);
+		}
+	};
+}
+
+void Station::listen(void)
+{
+	mListen = [this](void) {
+		mReceiver.listen([this](const Socket::buffer_t& msg) {
+			const packet_t& packet(*reinterpret_cast<const packet_t *>(&msg[0]));
+
+			mReceived.set(std::make_pair(clock_t::now(), packet));
+		});
+	};
+}
+
+void Station::send(uint64_t tx)
+{
+	try
+	{
+		prepare(tx);
+
+		clock_t::sleep_until(tx);
+
+		mSender.send(mGroup, mPort, &mPacket, sizeof(mPacket));
+	}
+	catch(const finder_t::NoEmptySlotError& e)
+	{
+		mSlot = -1;
+	}
+}
+
+void Station::step(uint64_t frame, int slot)
+{
+	mReceived.access([&](receiver_t& o) {
+		if(o.isPresent() && !o.hasCollided())
+		{
+			auto p(static_cast<receiver_t::value_type>(o));
+			uint64_t t = p.first;
+			packet_t& packet(p.second);
+
+			if(packet.type == 'A')
+			{
+				mTimer.add(t - packet.timestamp);
+			}
+
+			if(packet.timestamp / FRAME_DURATION == frame)
+			{
+				mSchedule.set(packet.next_slot - SLOT_IDX_OFFSET);
+			}
+		}
+		else
+		{
+			o.clear();
+
+			if(slot == mSlot)
+			{
+				mSlot = -1;
+			}
+		}
+	});
+}
+
+void Station::prepare(uint64_t tx)
+{
+	mPacket.payload = mPayload.get();
+	mPacket.next_slot = mFindSlot(mSchedule) + SLOT_IDX_OFFSET;
+	mPacket.timestamp = tx;
 }
 
 }

@@ -24,5 +24,10 @@ void Thread::join(void)
 	}
 }
 
+void Thread::detach(void)
+{
+	mThread.detach();
+}
+
 }
 
