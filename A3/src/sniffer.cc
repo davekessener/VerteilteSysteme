@@ -14,7 +14,7 @@ void Sniffer::start(const std::string& group, uint16_t port)
 
 	mThread = std::thread([this](void) {
 		mSock->listen([this](const Socket::buffer_t& msg) {
-			mCallback(*reinterpret_cast<const packet_t *>(&msg[0]));
+			mCallback(Packet{msg});
 		});
 	});
 }
@@ -37,17 +37,16 @@ void Sniffer::run(const std::string& group, uint16_t port)
 	uint64_t last_frame = 0;
 	uint last_slot = SLOTS_PER_FRAME;
 
-	Sniffer snif([&](const packet_t& msg) {
+	Sniffer snif([&](const Packet& msg) {
 		uint64_t t = clock_t::now();
 		uint64_t frame = (t + FRAME_DURATION - 1) / FRAME_DURATION;
 		uint slot = (t % FRAME_DURATION) / SLOT_DURATION;
-		std::string teamname(&msg.payload[0], &msg.payload[NAME_LENGTH]);
-		int next_slot = msg.next_slot - SLOT_IDX_OFFSET;
+		std::string teamname(msg.payload(), msg.payload() + NAME_LENGTH);
 		uint offset = ((t % FRAME_DURATION) % SLOT_DURATION);
 
 		bool collision = (last_frame == frame && last_slot == slot);
 		bool middle = ((delta < offset) && (offset < SLOT_DURATION - delta));
-		bool accurate = (difference(t, msg.timestamp) < SLOT_DURATION / 2);
+		bool accurate = (difference(t, msg.timestamp()) < SLOT_DURATION / 2);
 
 		if(last_frame != frame)
 		{
@@ -66,9 +65,9 @@ void Sniffer::run(const std::string& group, uint16_t port)
 			" (Slot ",
 			std::setw(2), slot,
 			"): received '", teamname,
-			"' [", msg.type, "] next slot: ",
-			std::setw(2), next_slot,
-			" TX: ", msg.timestamp, "\n")
+			"' [", msg.type(), "] next slot: ",
+			std::setw(2), msg.next_slot(),
+			" TX: ", msg.timestamp(), "\n")
 		<< std::flush;
 	});
 

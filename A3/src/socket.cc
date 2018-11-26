@@ -14,7 +14,7 @@
 #include "posix_error.h"
 
 #define MXT_BUFSIZE (64*1024)
-#define MXT_TTL 5
+#define MXT_TTL 1
 #define MXT_TIMEOUT {0,250000}
 #define MXT_INVALID_ADDR ((in_addr_t)-1)
 

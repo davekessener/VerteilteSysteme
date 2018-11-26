@@ -43,6 +43,8 @@ UTCoffsetMs=$7
 ########################################################################################################
 teamNo="16"
 
+logFile="log_`date +'%Y-%m-%d_%H%M%S'`.txt"
+
 ########################################################################################################
 # : Enter data source programme with full path, but WITHOUT parameters 
 #
@@ -79,7 +81,8 @@ then
 				for i in `seq $firstIndex $lastIndex`
 				do
 					# Launching data source and station.
-					$dataSource $teamNo $i | $stationCmd > log_$i.txt 2>&1 &
+#					$dataSource $teamNo $i | $stationCmd > log_$i.txt 2>&1 &
+					$dataSource $teamNo $i | $stationCmd 2>&1 > /dev/null | (while read line; do printf "[team%02d-%02d] %s\n" $teamNo $i "$line"; done) >> $logFile &
 
 #					sleep 1
 					#

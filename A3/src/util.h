@@ -20,8 +20,6 @@ using std::int64_t;
 typedef unsigned uint;
 typedef uint8_t byte_t;
 
-#define SLOT_IDX_OFFSET 1
-
 #define SLOTS_PER_FRAME 25
 #define FRAME_DURATION 1000
 #define SLOT_DURATION (FRAME_DURATION/SLOTS_PER_FRAME)

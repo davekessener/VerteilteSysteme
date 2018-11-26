@@ -16,7 +16,7 @@ namespace vs
 	class Sniffer
 	{
 		public:
-		typedef std::function<void(const packet_t&)> callback_fn;
+		typedef std::function<void(const Packet&)> callback_fn;
 
 		DEFINE_EXCEPTION(InvalidStateError);
 

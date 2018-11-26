@@ -21,7 +21,7 @@ namespace vs
 		typedef std::chrono::duration<int64_t, std::ratio<period_type::num, 10 * period_type::den>> highres_type;
 
 		public:
-			static void adjust(int64_t a) { sAdjust += a; }
+			static void adjust(int64_t a) { if(a > 0) sAdjust += a; }
 			static void reset( ) { sAdjust = 0; }
 			static uint64_t now( );
 			static void sleep(int64_t);

@@ -42,7 +42,7 @@ $(TARGET): $(OBJ)
 	$(LD) -o $(TARGET) $(OBJ) $(LDFLAGS) $(LIBS)
 
 clean:
-	rm -rf $(OUT_DIR) $(TARGET)
+	rm -rf $(OUT_DIR) $(TARGET) log*.txt
 
 rebuild: clean all
 
