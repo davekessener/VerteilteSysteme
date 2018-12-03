@@ -67,9 +67,12 @@ Socket::Socket(const std::string& address, uint16_t port)
 	if(sock < 0)
 		THROW<PosixError>("Socket creation failed");
 
-	int reuseport = 1;
-	if(setsockopt(sock, SOL_SOCKET, SO_REUSEPORT, &reuseport, sizeof(reuseport)))
+	int reuse = 1;
+	if(setsockopt(sock, SOL_SOCKET, SO_REUSEPORT, &reuse, sizeof(reuse)))
 		THROW<PosixError>("Could not REUSEPORT");
+
+	if(setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse)))
+		THROW<PosixError>("Could not REUSEADDR");
 	
 	int ttl = MXT_TTL;
 	if(setsockopt(sock, IPPROTO_IP, IP_TTL, &ttl, sizeof(ttl)))
