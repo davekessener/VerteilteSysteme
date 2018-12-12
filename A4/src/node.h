@@ -29,6 +29,7 @@ typedef int state_t;
 
 enum
 {
+	STATE_INIT,
 	STATE_ADVERTISING,
 	STATE_WAITING,
 	STATE_COORD_SKIP,

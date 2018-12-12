@@ -26,7 +26,7 @@ ifeq ($(BOARD),pba-d-01-kw2x)
 endif
 
 # set default channel for 802.15.4 devices
-CFLAGS += -DIEEE802154_DEFAULT_CHANNEL=$(DEFAULT_CHANNEL) -Wno-unused-parameter
+CFLAGS += -DIEEE802154_DEFAULT_CHANNEL=$(DEFAULT_CHANNEL) -Wno-unused-parameter -Wno-implicit-fallthrough
 # enable debug output, comment to disable
 DEVELHELP ?= 1
 CFLAGS += -DLOG_LEVEL=LOG_ALL

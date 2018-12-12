@@ -19,7 +19,7 @@ void Node_init(Node_t *self)
 
 	get_node_ip_addr(&self->my_ip);
 	Node_setCoord(self, &self->my_ip);
-	Node_setState(self, STATE_ADVERTISING);
+	Node_setState(self, STATE_INIT);
 }
 
 void Node_delete(Node_t *self)
@@ -31,6 +31,8 @@ void Node_elect_int(Node_t *self)
 {
 	switch(self->state)
 	{
+		case STATE_INIT:
+			Node_setState(self, STATE_ADVERTISING);
 		case STATE_ADVERTISING:
 			broadcast_id(&self->my_ip);
 			break;
@@ -55,8 +57,6 @@ void Node_elect_int(Node_t *self)
 
 void Node_elect_broadcast(Node_t *self, const char *ip)
 {
-	bool reset = false;
-
 	switch(self->state)
 	{
 		case STATE_ADVERTISING:
@@ -66,7 +66,6 @@ void Node_elect_broadcast(Node_t *self, const char *ip)
 		default:
 			LOG_DEBUG("Starting coord election\n");
 			Node_setState(self, STATE_ADVERTISING);
-			reset = true;
 	}
 
 	ipv6_addr_t other_ip;
@@ -82,7 +81,7 @@ void Node_elect_broadcast(Node_t *self, const char *ip)
 		Node_setState(self, STATE_WAITING);
 	}
 	
-	if(reset || c)
+	if(c)
 	{
 		Node_resetElection(self);
 	}
@@ -155,10 +154,6 @@ void Node_sendRequests(Node_t *self)
 		ipv6_addr_t *client = vector_get(&self->clients, i);
 
 		coap_get_sensor(*client);
-
-		char buf[IPV6_ADDR_MAX_STR_LEN];
-		ipv6_addr_to_str(buf, client, sizeof(buf));
-		LOG_DEBUG("requesting from %s\n", buf);
 	}
 }
 
@@ -193,6 +188,7 @@ void Node_resetLife(Node_t *self)
 void Node_setState(Node_t *self, state_t s)
 {
 	static const char * const STATE_NAMES[] = {
+		"INIT",
 		"ADVERTISING",
 		"WAITING",
 		"COORD_SKIP",
@@ -210,6 +206,7 @@ void Node_setState(Node_t *self, state_t s)
 			vector_clear(&self->clients);
 			Node_setCoord(self, &self->my_ip);
 			Node_resetElection(self);
+			xtimer_remove(&self->timers[TIMER_LIFE]);
 			break;
 
 		default:
